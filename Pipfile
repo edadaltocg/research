@@ -1,0 +1,33 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+torch = "==2.2.0"
+torchvision = "*"
+transformers = "*"
+datasets = "*"
+evaluate = "*"
+fire = "*"
+rich = "*"
+pillow = "*"
+ptflops = "*"
+einops = "*"
+sentencepiece = "*"
+
+[dev-packages]
+ruff = "*"
+mypy = "*"
+pytest = "*"
+pipenv = "*"
+pytest-cov = "*"
+pytest-xdist = "*"
+pytest-benchmark = "*"
+pysnooper = "*"
+seaborn = "*"
+matplotlib = "*"
+
+[requires]
+python_version = "3.10"
+python_full_version = "3.10.13"
