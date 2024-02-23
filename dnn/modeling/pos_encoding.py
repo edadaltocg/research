@@ -68,21 +68,29 @@ def positional_encoding_sincos_2d(h, w, dim, temperature: int = 10000, dtype=tor
     return pe.type(dtype)
 
 
-def precompute_freqs_cis(dim: int, end: int, theta: float) -> torch.Tensor:
+# RoPE
+def precompute_freqs_cis(dim: int, max_len: int, theta: float = 10_000) -> Tensor:
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
-    t = torch.arange(end, device=freqs.device)  # type: ignore
-    freqs = torch.outer(t, freqs).float()  # type: ignore
+    t = torch.arange(max_len)
+    freqs = torch.outer(t, freqs).float()
     return torch.polar(torch.ones_like(freqs), freqs)  # complex64
 
 
-def apply_rotary_emb(
-    xq: torch.Tensor,
-    xk: torch.Tensor,
-    freqs_cis: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
-    xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+def apply_rotary_emb(q: Tensor, k: Tensor, freqs_cis: Tensor) -> tuple[Tensor, Tensor]:
+    q_ = torch.view_as_complex(q.float().reshape(*q.shape[:-1], -1, 2))
+    k_ = torch.view_as_complex(k.float().reshape(*k.shape[:-1], -1, 2))
     freqs_cis = freqs_cis[:, None, :]
-    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(2)
-    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(2)
-    return xq_out.type_as(xq), xk_out.type_as(xk)
+    q_out = torch.view_as_real(q_ * freqs_cis).flatten(3)
+    k_out = torch.view_as_real(k_ * freqs_cis).flatten(3)
+    return q_out.type_as(q), k_out.type_as(k)
+
+
+class RotaryPositionEncoding(nn.Module):
+    def __init__(self, hidden_dim: int, max_len: int = 1024) -> None:
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.max_len = max_len
+        self.freqs_cis = precompute_freqs_cis(hidden_dim, max_len)
+
+    def forward(self, q: Tensor, k: Tensor) -> tuple[Tensor, Tensor]:
+        return apply_rotary_emb(q, k, self.freqs_cis)

@@ -37,10 +37,43 @@ References:
 import math
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, override
 
 import torch
 from torch import Tensor, nn
+from dnn.modeling.attention import KVCache
+
+from dnn.modeling.pos_encoding import precompute_freqs_cis
+
+
+def init_weights(
+    module: Union[nn.Linear, nn.Embedding],
+    init_fn: str,
+    std=0.02,
+    d_model: int = 768,
+    n_layers: int = 1,
+    std_factor: float = 1.0,
+) -> None:
+    """
+    Initialize weights of a linear or embedding module.
+    """
+    if init_fn == "normal":
+        nn.init.normal_(module.weight, mean=0.0, std=std)
+    elif init_fn == "kaiming_normal":
+        nn.init.kaiming_normal_(module.weight, nonlinearity="relu")
+    elif init_fn == "fan_in":
+        std = std_factor / math.sqrt(d_model)
+        nn.init.normal_(module.weight, mean=0.0, std=std)
+    else:
+        raise NotImplementedError(init_fn)
+
+    if isinstance(module, nn.Linear):
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
+
+        if init_fn == "normal" and getattr(module, "_is_residual", False):
+            with torch.no_grad():
+                module.weight.div_(math.sqrt(2 * n_layers))
 
 
 class LayerNorm(nn.Module):
@@ -88,7 +121,7 @@ class RMSNorm(nn.Module):
         return output
 
 
-class TransformerEncoderLayer(nn.Module):
+class VanillaTransformerEncoderLayer(nn.Module):
     def __init__(
         self,
         attn_mechanism: nn.Module,
@@ -98,27 +131,28 @@ class TransformerEncoderLayer(nn.Module):
         norm_first: bool = True,
     ) -> None:
         super().__init__()
-        self.attn = attn_mechanism
-        self.mlp = mlp
-        self.norm1 = norm_layer1
         self.norm2 = norm_layer2
-        self.norm_first = norm_first
 
-    def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None, input_pos: Optional[Tensor] = None) -> Tensor:
+        self.norm_first = norm_first
+        self.attn = attn_mechanism
+        self.norm1 = norm_layer1
+        self.mlp = mlp
+
+    def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
         if self.norm_first:
             # self-attention
-            x = x + self.attn(self.norm1(x), attn_mask=attn_mask, input_pos=input_pos)
+            x = x + self.attn(self.norm1(x), attn_mask=attn_mask)
             # mlp
             x = x + self.mlp(self.norm2(x))
         else:
             # self-attention
-            x = self.norm1(x + self.attn(x, attn_mask=attn_mask, input_pos=input_pos))
+            x = self.norm1(x + self.attn(x, attn_mask=attn_mask))
             # mlp
             x = self.norm2(x + self.mlp(x))
         return x
 
 
-class TransformerEncoder(nn.Module):
+class VanillaTransformerEncoder(nn.Module):
     def __init__(
         self,
         embedding: nn.Module,
@@ -161,9 +195,7 @@ class TransformerEncoder(nn.Module):
         # (b, s, d) -> (b, s, d) + (b, s, d)
         x += self.pos_encoding(x)
         x = self.dropout(x)
-        # for layer in self.layers:
-        #     x = layer(x)
-        x = self.layers(x)
+        x = self.layers(x, attn_mask)
         if self.norm is not None:
             x = self.norm(x)
         if self.pool is not None:
@@ -175,7 +207,110 @@ class TransformerEncoder(nn.Module):
 
 
 # When refered to a "Transformer" it usually means the encoder part.
-Transformer = TransformerEncoder
+class TransformerWithRoPEAndCacheLayer(VanillaTransformerEncoderLayer):
+    @override
+    def forward(self, x: Tensor, input_pos: Tensor, freqs_cis: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
+        if self.norm_first:
+            # self-attention
+            x = x + self.attn(self.norm1(x), freqs_cis=freqs_cis, input_pos=input_pos, attn_mask=attn_mask)
+            # mlp
+            x = x + self.mlp(self.norm2(x))
+        else:
+            # self-attention
+            x = self.norm1(x + self.attn(x, freqs_cis=freqs_cis, input_pos=input_pos, attn_mask=attn_mask))
+            # mlp
+            x = self.norm2(x + self.mlp(x))
+        return x
+
+
+class TransformerWithRoPE(nn.Module):
+    def __init__(
+        self,
+        embedding: nn.Module,
+        encoder_layer: TransformerWithRoPEAndCacheLayer,
+        block_size: int,
+        num_encoder_layers=6,
+        dropout_p=0.1,
+        cls_token: Optional[Tensor] = None,
+        norm: Optional[nn.Module] = None,
+        pool: Optional[Callable] = None,
+        head: Optional[nn.Module] = None,
+        is_causal: bool = False,
+    ) -> None:
+        super().__init__()
+        # variables
+        self.embedding = embedding
+        self.cls_token = cls_token
+        self.num_encoder_layers = num_encoder_layers
+        self.dropout_p = dropout_p
+        self.block_size = block_size
+
+        # caches
+        self.freqs_cis = None
+        self.causal_mask = None
+        self.max_batch_size = -1
+        self.max_seq_length = -1
+        self.num_kv_heads = encoder_layer.attn.num_kv_heads
+        self.embed_dim = encoder_layer.attn.embed_dim
+        self.head_dim = self.embed_dim // self.n_head
+
+        # layers
+        self.layers = nn.ModuleList([encoder_layer for _ in range(num_encoder_layers)])
+        self.norm = norm
+        self.pool = pool
+        self.head = head
+
+        for name, module in self.named_modules():
+            if hasattr(module, "reset_parameters"):
+                module.reset_parameters()
+
+    def setup_caches(self, max_seq_length: int):
+        if self.max_seq_length >= max_seq_length:
+            return
+        self.max_seq_length = max_seq_length
+
+        self.freqs_cis = precompute_freqs_cis(self.head_dim, self.block_size)
+        self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
+
+    def forward(self, x: Tensor, input_pos: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
+        assert self.freqs_cis is not None, "Please call setup_caches before using the model."
+        # (b, s, ...) -> (b, s, d)
+        x = self.embedding(x)
+        if self.cls_token is not None:
+            # (b, s, d) -> (b, s + 1, d)
+            x = torch.cat([self.cls_token.expand(x.size(0), -1, -1), x], dim=1)
+        # (b, s, d) -> (b, s, d) + (b, s, d)
+        x = self.dropout(x)
+
+        freqs_cis = self.freqs_cis[input_pos]
+        for layer in self.layers:
+            x = layer(x, input_pos, freqs_cis, attn_mask)
+
+        if self.norm is not None:
+            x = self.norm(x)
+        if self.pool is not None:
+            x = self.pool(x)
+        if self.head is not None:
+            # (b, s|1, d) -> (b, s|1, k)
+            x = self.head(x)
+
+        return x
+
+
+class TransformerWithRoPEAndKVCache(TransformerWithRoPE):
+    def setup_caches(self, max_batch_size: int, max_seq_length: int):
+        if self.max_seq_length >= max_seq_length and self.max_batch_size >= max_batch_size:
+            return
+        self.max_seq_length = max_seq_length
+        self.max_batch_size = max_batch_size
+        for b in self.layers:
+            b.attn.kv_cache = KVCache(max_batch_size, max_seq_length, self.num_kv_heads, self.head_dim)
+
+        self.freqs_cis = precompute_freqs_cis(self.head_dim, self.block_size)
+        self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
+
+
+Transformer = TransformerWithRoPEAndKVCache
 
 
 class TransformerDecoderLayer(nn.Module):
@@ -306,33 +441,3 @@ class TransformerEncoderDecoder(nn.Module):
         memory = self.encoder(src, src_mask)
         outputs = self.decoder(tgt, memory, tgt_mask, memory_mask)
         return outputs
-
-
-def init_weights(
-    module: Union[nn.Linear, nn.Embedding],
-    init_fn: str,
-    std=0.02,
-    d_model: int = 768,
-    n_layers: int = 1,
-    std_factor: float = 1.0,
-) -> None:
-    """
-    Initialize weights of a linear or embedding module.
-    """
-    if init_fn == "normal":
-        nn.init.normal_(module.weight, mean=0.0, std=std)
-    elif init_fn == "kaiming_normal":
-        nn.init.kaiming_normal_(module.weight, nonlinearity="relu")
-    elif init_fn == "fan_in":
-        std = std_factor / math.sqrt(d_model)
-        nn.init.normal_(module.weight, mean=0.0, std=std)
-    else:
-        raise NotImplementedError(init_fn)
-
-    if isinstance(module, nn.Linear):
-        if module.bias is not None:
-            nn.init.zeros_(module.bias)
-
-        if init_fn == "normal" and getattr(module, "_is_residual", False):
-            with torch.no_grad():
-                module.weight.div_(math.sqrt(2 * n_layers))
