@@ -15,6 +15,10 @@ pillow = "*"
 ptflops = "*"
 einops = "*"
 sentencepiece = "*"
+scikit-image = "*"
+torcheval = "*"
+tensorboard = "*"
+torchsummary = "*"
 
 [dev-packages]
 ruff = "*"

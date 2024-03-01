@@ -1,19 +1,14 @@
-from pathlib import Path
+import logging
 import random
 import time
-from torch.profiler import ProfilerActivity, schedule
-from tqdm import tqdm
-import torch
-import torch.nn as nn
-import torch.distributed as dist
-import torch.nn.functional as F
-import torch.utils.data
-import torch.optim as optim
-from torch.distributed.fsdp import (
-    FullyShardedDataParallel as FSDP,
-    OptimStateDictConfig,
-)
+from pathlib import Path
 
+import torch
+import torch.distributed as dist
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torch.utils.data
 from torch.distributed.fsdp import (
     BackwardPrefetch,
     FullOptimStateDictConfig,
@@ -21,10 +16,13 @@ from torch.distributed.fsdp import (
     MixedPrecision,
     ShardingStrategy,
     StateDictType,
-    CPUOffload,
 )
-import logging
+from torch.distributed.fsdp import (
+    FullyShardedDataParallel as FSDP,
+)
+from torch.profiler import ProfilerActivity, schedule
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 dest_root = "output/tutorials/fsdp"
 dest_root = Path(dest_root)
@@ -52,26 +50,28 @@ random.seed(seed)
 torch.cuda.manual_seed_all(seed)
 
 # config
-seq_len = 10
-vocab_size = 100
-num_samples = 10000
-batch_size = 5
-step_batch_size = batch_size * WORLD_SIZE
+seq_len = 2048
+vocab_size = 32000
+num_samples = 100000
+batch_size = 20
+step_batch_size = batch_size
 num_workers = 8 if WORLD_SIZE >= 1 else 0
 
-d_model = 384
+d_model = 768
 nhead = 8
 num_layers = 8
-dim_feedforward = 1024
+dim_feedforward = d_model * 4
 bias = False
 activation = F.gelu
-grad_clip_norm = 1.0
-gradient_accumulation_steps = 2
+grad_clip_norm = 0.1
+desired_batch_size = 1024
+gradient_accumulation_steps = desired_batch_size // step_batch_size
 hparams = {
     k: v
     for k, v in locals().items()
     if k != "writer" and type(v) in [int, float, str, bool, torch.Tensor]
 }
+toks_multiplier = seq_len * batch_size
 
 
 # data
@@ -109,7 +109,7 @@ class Transformer(nn.Module):
     def __init__(self):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
-        self.pos_encoding = nn.Parameter(torch.randn(1, seq_len, d_model))
+        pos_encoding = torch.randn(1, seq_len, d_model, device=device)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
@@ -119,11 +119,12 @@ class Transformer(nn.Module):
             batch_first=True,
             bias=bias,
         )
-        encoder_norm = nn.LayerNorm(d_model)
+        encoder_norm = nn.LayerNorm(d_model, eps=1e-6)
         self.encoder = nn.TransformerEncoder(
             encoder_layer, num_layers=num_layers, norm=encoder_norm
         )
-        self.head = nn.Linear(d_model, vocab_size)
+        self.head = nn.Linear(d_model, vocab_size, bias=False)
+        self.register_buffer("pos_encoding", pos_encoding)
 
     def forward(self, x, mask):
         x = self.embedding(x) + self.pos_encoding
@@ -136,8 +137,8 @@ model = Transformer()
 if WORLD_SIZE > 1:
     bf16 = MixedPrecision(
         param_dtype=torch.bfloat16,
-        # Gradient communication precision.
-        reduce_dtype=torch.bfloat16,
+        # Gradient comunication precision.
+        reduce_dtype=torch.float32,
         # Buffer precision.
         buffer_dtype=torch.bfloat16,
     )
@@ -177,9 +178,11 @@ log.info(f"{attn_mask=}")
 
 num_steps = len(dataloader) * 1
 total = num_steps
-optimizer = optim.AdamW(model.parameters(), lr=0.001)
+optimizer = optim.AdamW(
+    model.parameters(), betas=(0.9, 0.95), eps=1e-5, weight_decay=0.1, lr=4e-4
+)
 linear_warmup = torch.optim.lr_scheduler.LinearLR(
-    optimizer, start_factor=0.5, total_iters=100
+    optimizer, start_factor=0.1, total_iters=150
 )
 cosine_decay = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, total)
 schedulers = [linear_warmup, cosine_decay]
@@ -204,6 +207,7 @@ if WORLD_SIZE > 1 and sampler is not None:
 loss = torch.zeros(2, device=device)
 lr_monitor = torch.zeros(1, device=device)
 throughout = torch.zeros(2, device=device)
+grad_norm = torch.zeros(1, device=device)
 peak_gpu_memory = 0
 if WORLD_SIZE >= 1:
     torch.cuda.reset_peak_memory_stats(device)
@@ -212,7 +216,7 @@ print(f"{RANK=} Peak GPU memory: {peak_gpu_memory / 1024**3:.2f} GB")
 
 device_history = {
     k: torch.zeros((total,), device=device)
-    for k in ["train/loss", "lr", "throughput", "mem"]
+    for k in ["train/loss", "lr", "throughput", "mem", "grad_norm"]
 }
 
 profiling_schedule = schedule(wait=1, warmup=5, active=3, repeat=1)
@@ -249,10 +253,12 @@ for i in pbar:
     y = y.view(-1)
     log.debug(f"{pred.shape=}, {y.shape=}")
     device_loss = F.cross_entropy(pred, y, reduction="sum")
+    device_loss = device_loss / gradient_accumulation_steps
     device_loss.backward()
     if grad_clip_norm is not None:
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
     if (i + 1) % gradient_accumulation_steps == 0:
+        log.info(f"Step {i+1} optimizer.step()")
         optimizer.step()
         scheduler.step()
 
@@ -265,8 +271,19 @@ for i in pbar:
         peak_gpu_memory = torch.cuda.max_memory_allocated(device)
     device_history["train/loss"][i] = loss[0] / loss[1]
     device_history["lr"][i] = lr_monitor[0]
-    device_history["throughput"][i] = (throughout[0] / throughout[1]).item()
+    device_history["throughput"][i] = (
+        throughout[0] / throughout[1]
+    ).item() * toks_multiplier
     device_history["mem"][i] = peak_gpu_memory / 1024**3
+    grad_norm = torch.zeros(1, device=device)
+    parameters = [
+        p for p in model.parameters() if p.grad is not None and p.requires_grad
+    ]
+    for p in parameters:
+        param_norm = p.grad.detach().data.norm(2)
+        grad_norm += param_norm**2
+    total_norm = grad_norm ** (1.0 / 2)
+    device_history["grad_norm"][i] = total_norm
 
     # checkpoint
     if (i + 1) % checkpoint_every == 0:
@@ -339,5 +356,3 @@ if WORLD_SIZE > 1:
 """
 torchrun --standalone --nnodes=1 --nproc_per_node=2 tutorials/fsdp.py
 """
-if __name__ == "__main__":
-    import fire

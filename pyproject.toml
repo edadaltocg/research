@@ -8,7 +8,7 @@ requires = ["setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [tool.ruff]
-line-length = 120
+line-length = 88
 indent-width = 4
 exclude = [
   ".bzr",
