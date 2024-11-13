@@ -37,12 +37,12 @@ References:
 import math
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Callable, Optional, Union, override
+from typing import Callable, Optional, Union
 
 import torch
 from torch import Tensor, nn
-from dnn.modeling.attention import KVCache
 
+from dnn.modeling.attention import KVCache
 from dnn.modeling.pos_encoding import precompute_freqs_cis
 
 
@@ -89,9 +89,13 @@ class LayerNorm(nn.Module):
         self.device = device
         self.dtype = dtype
 
-        self.weight = nn.Parameter(torch.ones(normalized_shape, device=device, dtype=dtype))
+        self.weight = nn.Parameter(
+            torch.ones(normalized_shape, device=device, dtype=dtype)
+        )
         if bias:
-            self.bias = nn.Parameter(torch.zeros(normalized_shape, device=device, dtype=dtype))
+            self.bias = nn.Parameter(
+                torch.zeros(normalized_shape, device=device, dtype=dtype)
+            )
         else:
             self.register_parameter("bias", None)
 
@@ -110,7 +114,13 @@ class LayerNorm(nn.Module):
 
 
 class RMSNorm(nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-5):
+    def __init__(
+        self,
+        dim: int,
+        eps: float = 1e-5,
+        device=None,
+        dtype=None,
+    ):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
@@ -173,11 +183,11 @@ class VanillaTransformerEncoder(nn.Module):
         self.dropout_p = dropout_p
 
         self.dropout = nn.Dropout(dropout_p)
-        # self.layers = nn.ModuleList([encoder_layer for _ in range(num_encoder_layers)])
-        layers: OrderedDict[str, nn.Module] = OrderedDict(
-            {f"{i}": deepcopy(encoder_layer) for i in range(num_encoder_layers)}
-        )
-        self.layers = nn.Sequential(layers)
+        self.layers = nn.ModuleList([encoder_layer for _ in range(num_encoder_layers)])
+        # layers: OrderedDict[str, nn.Module] = OrderedDict(
+        #     {f"{i}": deepcopy(encoder_layer) for i in range(num_encoder_layers)}
+        # )
+        # self.layers = nn.Sequential(layers)
         self.norm = norm
         self.pool = pool
         self.head = head
@@ -195,7 +205,8 @@ class VanillaTransformerEncoder(nn.Module):
         # (b, s, d) -> (b, s, d) + (b, s, d)
         x += self.pos_encoding(x)
         x = self.dropout(x)
-        x = self.layers(x, attn_mask)
+        for layer in self.layers:
+            x = layer(x, attn_mask)
         if self.norm is not None:
             x = self.norm(x)
         if self.pool is not None:
@@ -208,16 +219,31 @@ class VanillaTransformerEncoder(nn.Module):
 
 # When refered to a "Transformer" it usually means the encoder part.
 class TransformerWithRoPEAndCacheLayer(VanillaTransformerEncoderLayer):
-    @override
-    def forward(self, x: Tensor, input_pos: Tensor, freqs_cis: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
+    def forward(
+        self,
+        x: Tensor,
+        input_pos: Tensor,
+        freqs_cis: Tensor,
+        attn_mask: Optional[Tensor] = None,
+    ) -> Tensor:
         if self.norm_first:
             # self-attention
-            x = x + self.attn(self.norm1(x), freqs_cis=freqs_cis, input_pos=input_pos, attn_mask=attn_mask)
+            x = x + self.attn(
+                self.norm1(x),
+                freqs_cis=freqs_cis,
+                input_pos=input_pos,
+                attn_mask=attn_mask,
+            )
             # mlp
             x = x + self.mlp(self.norm2(x))
         else:
             # self-attention
-            x = self.norm1(x + self.attn(x, freqs_cis=freqs_cis, input_pos=input_pos, attn_mask=attn_mask))
+            x = self.norm1(
+                x
+                + self.attn(
+                    x, freqs_cis=freqs_cis, input_pos=input_pos, attn_mask=attn_mask
+                )
+            )
             # mlp
             x = self.norm2(x + self.mlp(x))
         return x
@@ -231,11 +257,14 @@ class TransformerWithRoPE(nn.Module):
         block_size: int,
         num_encoder_layers=6,
         dropout_p=0.1,
+        num_kv_heads: int = 8,
+        num_q_heads: int = 8,
         cls_token: Optional[Tensor] = None,
         norm: Optional[nn.Module] = None,
         pool: Optional[Callable] = None,
         head: Optional[nn.Module] = None,
-        is_causal: bool = False,
+        device=None,
+        dtype=None,
     ) -> None:
         super().__init__()
         # variables
@@ -260,6 +289,8 @@ class TransformerWithRoPE(nn.Module):
         self.pool = pool
         self.head = head
 
+        self.setup_caches(block_size)
+
         for name, module in self.named_modules():
             if hasattr(module, "reset_parameters"):
                 module.reset_parameters()
@@ -270,10 +301,16 @@ class TransformerWithRoPE(nn.Module):
         self.max_seq_length = max_seq_length
 
         self.freqs_cis = precompute_freqs_cis(self.head_dim, self.block_size)
-        self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
+        self.causal_mask = torch.tril(
+            torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool)
+        )
 
-    def forward(self, x: Tensor, input_pos: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
-        assert self.freqs_cis is not None, "Please call setup_caches before using the model."
+    def forward(
+        self, x: Tensor, input_pos: Tensor, attn_mask: Optional[Tensor] = None
+    ) -> Tensor:
+        assert (
+            self.freqs_cis is not None
+        ), "Please call setup_caches before using the model."
         # (b, s, ...) -> (b, s, d)
         x = self.embedding(x)
         if self.cls_token is not None:
@@ -298,16 +335,61 @@ class TransformerWithRoPE(nn.Module):
 
 
 class TransformerWithRoPEAndKVCache(TransformerWithRoPE):
+    def __init__(
+        self,
+        embedding: nn.Module,
+        encoder_layer: TransformerWithRoPEAndCacheLayer,
+        block_size: int,
+        max_batch_size: int,
+        num_encoder_layers=6,
+        dropout_p=0.1,
+        cls_token: Optional[Tensor] = None,
+        norm: Optional[nn.Module] = None,
+        pool: Optional[Callable] = None,
+        head: Optional[nn.Module] = None,
+        device=None,
+        dtype=None,
+    ) -> None:
+        # variables
+        super().__init__(
+            embedding,
+            encoder_layer,
+            block_size,
+            num_encoder_layers,
+            dropout_p,
+            cls_token,
+            norm,
+            pool,
+            head,
+            device,
+            dtype,
+        )
+        # caches
+        self.max_batch_size = -1
+
+        self.setup_caches(max_batch_size, block_size)
+
+        for name, module in self.named_modules():
+            if hasattr(module, "reset_parameters"):
+                module.reset_parameters()
+
     def setup_caches(self, max_batch_size: int, max_seq_length: int):
-        if self.max_seq_length >= max_seq_length and self.max_batch_size >= max_batch_size:
+        if (
+            self.max_seq_length >= max_seq_length
+            and self.max_batch_size >= max_batch_size
+        ):
             return
         self.max_seq_length = max_seq_length
         self.max_batch_size = max_batch_size
         for b in self.layers:
-            b.attn.kv_cache = KVCache(max_batch_size, max_seq_length, self.num_kv_heads, self.head_dim)
+            b.attn.kv_cache = KVCache(
+                max_batch_size, max_seq_length, self.num_kv_heads, self.head_dim
+            )
 
         self.freqs_cis = precompute_freqs_cis(self.head_dim, self.block_size)
-        self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
+        self.causal_mask = torch.tril(
+            torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool)
+        )
 
 
 Transformer = TransformerWithRoPEAndKVCache
@@ -323,6 +405,8 @@ class TransformerDecoderLayer(nn.Module):
         norm_layer2: nn.Module,
         norm_layer3: nn.Module,
         norm_first: bool = True,
+        device=None,
+        dtype=None,
     ) -> None:
         super().__init__()
         self.self_attn = self_attention

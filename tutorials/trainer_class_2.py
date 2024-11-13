@@ -24,6 +24,7 @@ from torch.distributed.fsdp import (
     MixedPrecision,
     ShardingStrategy,
     StateDictType,
+    BackwardPrefetch,
 )
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
@@ -86,15 +87,15 @@ class Trainer:
     fsdp: bool = True
     auto_wrap_policy: Optional[_UnknownType] = None
     optimizer_name: str = "AdamW"
+    minimum_lr: float = 3e-5
     peak_lr: float = 3e-4
     weight_decay: float = 0.1
     beta1: float = 0.9
-    beta2: float = 0.999
+    beta2: float = 0.95
     epsilon: float = 1e-5
 
     lr_scheduler_name: str = "linear"
     warmup_steps: int = 2000
-    minimum_lr: float = 3e-5
 
     num_steps: int = 10000
     start_step: int = 1
@@ -147,8 +148,8 @@ class Trainer:
     def __post_init__(self):
         torch.set_float32_matmul_precision("high")
         torch.set_default_dtype(self.dtype_converter(self.param_dtype))
-        dest_root = "output/tutorials/locals"
-        dest_root = Path(dest_root)
+        dest_root = self.output_root
+        dest_root = Path(dest_root) / self.run_name
         dest_root.mkdir(parents=True, exist_ok=True)
         self.dest_root = dest_root
         self.setup_distrib()
@@ -163,16 +164,8 @@ class Trainer:
             format=self.log_format,
         )
 
-        self.pbar = self.setup_pbar()
-        self.train_dataloader = self.setup_train_dataloader()
-        self.train_iter = iter(self.train_dataloader)
-        self.eval_dataloader = self.setup_eval_dataloader()
-        self.model = self.setup_model()
-        # log.info(f"{self.model.dtype=}")
-        if self.compile:
-            self.model = self.compile_model()  # type: ignore
-        self.optimizer = self.setup_optimizer()
-        self.scheduler = self.setup_lr_scheduler()
+        self.step = self.start_step
+        self.best_eval_loss = math.inf
         self.train_history = {}
         self.eval_history = {}
         self.train_latest_history = {}
@@ -190,6 +183,17 @@ class Trainer:
         self.gradient_accumulation_steps = max(
             1, self.desired_batch_size // self.device_train_batch_size
         )
+
+        self.train_dataloader = self.setup_train_dataloader()
+        self.train_iter = iter(self.train_dataloader)
+        self.eval_dataloader = self.setup_eval_dataloader()
+        self.model = self.setup_model()
+        # log.info(f"{self.model.dtype=}")
+        if self.compile:
+            self.model = self.compile_model()  # type: ignore
+        self.optimizer = self.setup_optimizer()
+        self.scheduler = self.setup_lr_scheduler()
+        self.pbar = self.setup_pbar()
 
     def setup_pbar(self):
         return tqdm(
@@ -238,7 +242,7 @@ class Trainer:
         else:
             sampler = None
         log.info(f"{sampler=}")
-        return DataLoader(
+        dataloader = DataLoader(
             self.train_dataset,
             batch_size=self.device_train_batch_size,
             sampler=sampler,
@@ -247,6 +251,9 @@ class Trainer:
             drop_last=self.drop_last,
             # generator=torch.Generator(self.device.type),
         )
+        log.info(f"Train {dataloader=}, {len(dataloader)=}")
+
+        return dataloader
 
     def setup_eval_dataloader(self):
         log.info(f"Setting up eval dataloader for {self.device=}")
@@ -255,14 +262,14 @@ class Trainer:
         if self.WORLD_SIZE > 1:
             sampler = DistributedSampler(
                 self.eval_dataset,
-                drop_last=False,
+                drop_last=self.drop_last,
                 rank=self.RANK,
                 num_replicas=self.WORLD_SIZE,
             )
         else:
             sampler = None
         log.info(f"{sampler=}")
-        return DataLoader(
+        dataloader = DataLoader(
             self.eval_dataset,
             batch_size=self.device_eval_batch_size,
             sampler=sampler,
@@ -270,6 +277,10 @@ class Trainer:
             pin_memory=True,
             # generator=torch.Generator(self.device.type),
         )
+
+        log.info(f"Eval {dataloader=}, {len(dataloader)=}")
+
+        return dataloader
 
     def dtype_converter(self, dtype):
         return {
@@ -303,13 +314,13 @@ class Trainer:
                 self.model = FSDP(
                     self.model,
                     device_id=self.RANK,
-                    # backward_prefetch=BackwardPrefetch.BACKWARD_PRE,
+                    backward_prefetch=BackwardPrefetch.BACKWARD_PRE,
                     # sharding_strategy=ShardingStrategy.SHARD_GRAD_OP,
                     sharding_strategy=ShardingStrategy.FULL_SHARD,
                     mixed_precision=self.precision,
                     use_orig_params=True,
                     limit_all_gathers=True,
-                    forward_prefetch=False,
+                    # forward_prefetch=True, # cpu bould workloads
                     auto_wrap_policy=self.auto_wrap_policy,
                     # cpu_offload=CPUOffload(True),
                 )
@@ -344,19 +355,27 @@ class Trainer:
         )
 
         cosine_decay = optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, self.num_steps
+            self.optimizer, self.num_steps - self.warmup_steps
         )
         schedulers = [linear_warmup, cosine_decay]
-        return optim.lr_scheduler.ChainedScheduler(schedulers)
+        scheduler = optim.lr_scheduler.SequentialLR(
+            self.optimizer, schedulers, milestones=[self.warmup_steps]
+        )
+        return scheduler
 
     def compile_model(self):
+        os.environ["TORCH_LOGS"] = "+dynamo"
+        os.environ["TORCHDYNAMO_VERBOSE"] = "1"
         log.info("Compiling model")
         return torch.compile(
             self.model,
             mode=self.compiler_mode,
             backend=self.compiler_backend,
             fullgraph=self.compiler_fullgraph,
+            dynamic=True,
         )
+        # self.forward_backward()
+        # return self.model
 
     # def resume_from_checkpoint(self, checkpoint_path: Optional[str] = None):
     #     if checkpoint_path:
@@ -383,10 +402,15 @@ class Trainer:
             self.train_latest_history = {}
             for k, v in self.train_history.items():
                 vv = v[self.step].item()
-                self.train_latest_history[f"train/{k}"] = vv
+                self.train_latest_history[f"t/{k}"] = vv
                 self.writer.add_scalar(f"train/{self.RANK}/{k}", vv, self.step)
+
+            curr_lr = self.optimizer.param_groups[0]["lr"]
+            if self.RANK == 0:
+                self.writer.add_scalar("lr", curr_lr, self.step)
+
             self.pbar.set_postfix(
-                **self.train_latest_history, **self.eval_latest_history
+                **self.train_latest_history, **self.eval_latest_history, lr=curr_lr
             )
 
     def log_eval(self):
@@ -402,7 +426,7 @@ class Trainer:
             self.eval_latest_history = {}
             for k, v in self.eval_history.items():
                 vv = v[self.step].item()
-                self.eval_latest_history[f"eval/{k}"] = vv
+                self.eval_latest_history[f"e/{k}"] = vv
                 self.writer.add_scalar(f"eval/{self.RANK}/{k}", vv, self.step)
 
     def log_optimizer(self):
@@ -420,6 +444,7 @@ class Trainer:
         except StopIteration:
             # StopIteration is thrown if dataset ends
             # reinitialize data loader
+            log.warning("End of dataset, reinitializing train data loader iterator")
             self.train_iter = iter(self.train_dataloader)
             self.train_batch = next(self.train_iter)
 
@@ -430,14 +455,21 @@ class Trainer:
 
     @torch.no_grad()
     def eval(self):
+        log.info(f"Evaluating at {self.step=}")
         if self.eval_forward is None or self.eval_dataset is None:
             return
         self.model.eval()
         for eval_batch in self.eval_dataloader:
             self.eval_batch = move_to_device(eval_batch, self.device)
             self.eval_outputs = self.eval_forward(self.model, self.eval_batch)
+        eval_loss = self.eval_outputs["loss"].item()
+        if self.checkpoint_best:
+            if eval_loss < self.best_eval_loss:
+                self.best_eval_loss = eval_loss
+                self.checkpoint("best-")
+                log.info(f"New best eval loss: {eval_loss=} at {self.step=}")
 
-    def checkpoint(self):
+    def checkpoint(self, tag=""):
         if self.WORLD_SIZE > 1:
             with FSDP.state_dict_type(
                 self.model,
@@ -472,14 +504,16 @@ class Trainer:
             **self.trainer_hparams,
         }
         if self.RANK == 0:
-            path = self.dest_root / f"{self.checkpoint_prefix}-{self.step}.pt"
+            path = self.dest_root / f"{tag}{self.checkpoint_prefix}-{self.step}.pt"
             log.info(f"Checkpointing at {self.step=} to {path=}")
             torch.save(checkpoint, str(path))
             self.writer.add_hparams(self.trainer_hparams, self.checkpoint_metrics)
 
     def run(self):
+        log.info("Starting training loop")
         if self.eval_on_start:
             self.eval()
+            self.log_eval()
         with self.profiler as _:
             for self.step in self.pbar:
                 self.every(1, self.forward_backward)
@@ -490,10 +524,12 @@ class Trainer:
                 self.every(self.eval_freq, self.eval)
                 self.every(self.eval_freq, self.log_eval)
                 self.every(self.checkpoint_freq, self.checkpoint)
+                self.every(1, self.scheduler.step)
         if self.eval_on_end:
             self.eval()
+            self.log_eval()
         if self.checkpoint_last:
-            self.checkpoint()
+            self.checkpoint("last-")
         self.writer.close()
         if self.WORLD_SIZE > 1:
             dist.barrier()
@@ -607,7 +643,8 @@ def test_trainer(
         assert model.device.type == "cuda", f"{model.device=}"
         outputs, extra_logits = model.forward(x, labels=True)
         loss = outputs.loss
-        return {"loss": loss}
+        ppl = torch.exp(loss)
+        return {"loss": loss, "ppl": ppl}
 
     def eval_forward_example(model, batch):
         x = batch[0]  # [:, :-1].contiguous()
@@ -713,32 +750,63 @@ def test_trainer(
 
 
 def calm_trainer(
+    experiment_idx=0,
     num_calm_layers=32,
-    num_steps=1000,
-    grad_clip_norm=1,
+    num_steps=10000,
+    grad_clip_norm=None,
     batch_size=1024,
     num_workers=8,
-    compile=True,
+    compile=False,
     profile=False,
+    compiler_mode: Literal[
+        "default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"
+    ] = "reduce-overhead",  # max-autotune
 ):
+    # 10_000 steps * 4096 tokens * 2048 batch_size = 84B tokens approx
     def train_forward_example(model, batch):
         x = batch[0]  # [:, :-1].contiguous()
         assert x.device.type == "cuda", f"{x.device=}"
         assert model.device.type == "cuda", f"{model.device=}"
-        outputs, extra_logits = model.forward(x, labels=True)
+        outputs = model.forward(x, labels=True)
         loss = outputs.loss
-        return {"loss": loss}
+        ppl = torch.exp(loss)
+        return {"loss": loss, "ppl": ppl}
 
     def eval_forward_example(model, batch):
         x = batch[0]  # [:, :-1].contiguous()
         assert x.device.type == "cuda", f"{x.device=}"
         assert model.device.type == "cuda", f"{model.device=}"
-        outputs, extra_logits = model.forward(x, labels=True)
+        outputs = model.forward(x, labels=True)
+        # intermediate_logits = outputs.intermediate_logits
+        # intermediate_losses = outputs.intermediate_losses
+        # logits = outputs.logits
+        # compute loss per logits
+        # losses = list(
+        #     map(
+        #         lambda x: F.cross_entropy(
+        #             x[..., :-1, :].contiguous().view(-1, model.config.vocab_size),
+        #             logits.argmax(-1)[..., 1:].contiguous().view(-1),
+        #         ),
+        #         intermediate_logits,
+        #     )
+        # )
         loss = outputs.loss
         ppl = torch.exp(loss)
-        return {"loss": loss, "ppl": ppl}
+        d = {"loss": loss, "ppl": ppl}
+        # for i, l in enumerate(intermediate_losses):
+        #     d[f"hl/{i}"] = l
+        return d
 
-    model, tokenizer = prepare_calm_llama(num_layers=num_calm_layers)
+    experiment_idx_to_head_type = {
+        0: "linear",
+        1: "silu",
+        2: "lowrank32",
+    }
+    head_type = experiment_idx_to_head_type[experiment_idx]
+
+    model, tokenizer = prepare_calm_llama(
+        num_layers=num_calm_layers, head_type=head_type
+    )
     auto_wrap_policy = partial(
         transformer_auto_wrap_policy,
         transformer_layer_cls={
@@ -749,15 +817,26 @@ def calm_trainer(
     eval_forward = eval_forward_example
     dataset = build_pre_train_dataset(
         {
-            "c4": 1,
+            ("c4", "train[:10%]"): 0.6,
+            ("wikipedia", "train[:100%]"): 0.1,
+            ("the_stack", "train[:1%]"): 0.3,
         }
-    )
-    train_dataset = torch.utils.data.Subset(dataset, range(0, 80))
-    eval_dataset = torch.utils.data.Subset(dataset, range(80, 100))
+    )  # 4B tokens
+
+    split_idx = int(0.8 * len(dataset))
+    train_dataset = torch.utils.data.Subset(dataset, range(0, split_idx))
+    eval_dataset = torch.utils.data.Subset(dataset, range(split_idx, len(dataset)))
+    print(f"{len(train_dataset)=}")
+    print(f"{len(eval_dataset)=}")
+
+    lr_multiplier = 10
+    time_dd_mm_yyyy_hh_mm = time.strftime("%d_%m_%Y_%H_%M")
     my_trainer = Trainer(
         model=model,
         fsdp=True,
         auto_wrap_policy=auto_wrap_policy,
+        minimum_lr=3e-5,
+        peak_lr=3e-4 * lr_multiplier,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         train_forward=train_forward,
@@ -771,11 +850,14 @@ def calm_trainer(
         num_workers=num_workers,
         compile=compile,
         profile=profile,
-        num_checkpoints=0,
+        num_checkpoints=3,
         num_logs=num_steps,
         param_dtype="bfloat16",
         buffer_dtype="bfloat16",
+        reduce_dtype="float32",
+        run_name=f"{time_dd_mm_yyyy_hh_mm}_calm_{head_type}_{num_calm_layers}_{batch_size}_{grad_clip_norm}",
         force_cpu=False,
+        # compiler_mode=compiler_mode,
     )
     my_trainer.run()
 

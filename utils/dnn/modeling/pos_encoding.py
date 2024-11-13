@@ -56,7 +56,9 @@ def vanilla_positional_encoding(x):
     return pe
 
 
-def positional_encoding_sincos_2d(h, w, dim, temperature: int = 10000, dtype=torch.float32):
+def positional_encoding_sincos_2d(
+    h, w, dim, temperature: int = 10000, dtype=torch.float32
+):
     y, x = torch.meshgrid(torch.arange(h), torch.arange(w), indexing="ij")
     assert (dim % 4) == 0, "feature dimension must be multiple of 4 for sincos emb"
     omega = torch.arange(dim // 4) / (dim // 4 - 1)

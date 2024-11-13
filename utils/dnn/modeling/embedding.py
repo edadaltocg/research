@@ -8,7 +8,9 @@ class PatchEmbedding(nn.Module):
         self.patch_size = patch_size
         self.embed_dim = embed_dim
 
-        self.proj = nn.Conv2d(in_channels, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.proj = nn.Conv2d(
+            in_channels, embed_dim, kernel_size=patch_size, stride=patch_size
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         # (n, c, h, w) -> (n, hidden_dim, n_h, n_w)
@@ -19,10 +21,16 @@ class PatchEmbedding(nn.Module):
 
 
 class LinearPatchEmbedding(nn.Module):
-    def __init__(self, patch_height: int, patch_width: int, patch_dim: int, dim: int) -> None:
+    def __init__(
+        self, patch_height: int, patch_width: int, patch_dim: int, dim: int
+    ) -> None:
         super().__init__()
         self.proj = nn.Sequential(
-            Rearrange("b c (h p1) (w p2) -> b (h w) (p1 p2 c)", p1=patch_height, p2=patch_width),
+            Rearrange(
+                "b c (h p1) (w p2) -> b (h w) (p1 p2 c)",
+                p1=patch_height,
+                p2=patch_width,
+            ),
             nn.LayerNorm(patch_dim),
             nn.Linear(patch_dim, dim),
             nn.LayerNorm(dim),

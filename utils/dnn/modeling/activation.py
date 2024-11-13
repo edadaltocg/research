@@ -13,3 +13,8 @@ class SwiGLU(nn.Module):
     def forward(self, x):
         x, gate = x.chunk(2, dim=-1)
         return F.silu(gate) * x
+
+
+class SiLU(nn.Module):
+    def forward(self, x: Tensor) -> Tensor:
+        return x * torch.sigmoid(x)

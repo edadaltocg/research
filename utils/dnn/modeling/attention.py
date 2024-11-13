@@ -4,7 +4,8 @@ from typing import Callable, Optional
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
-from dnn.modeling.pos_encoding import apply_rotary_emb, precompute_freqs_cis
+
+from dnn.modeling.pos_encoding import apply_rotary_emb
 
 
 class KVCache(nn.Module):
@@ -18,7 +19,15 @@ class KVCache(nn.Module):
         OPT-30B: 2 * 48 * 128 * 7168 * 1024 * 2 = 180 GB vs 60 GB model parameters.
     """
 
-    def __init__(self, max_batch_size, max_seq_length, n_heads, head_dim, dtype=torch.float16):
+    def __init__(
+        self,
+        max_batch_size,
+        max_seq_length,
+        n_heads,
+        head_dim,
+        device=None,
+        dtype=torch.float16,
+    ):
         super().__init__()
         self.max_batch_size = max_batch_size
         self.max_seq_length = max_seq_length
@@ -48,6 +57,9 @@ class KVCache(nn.Module):
         v_out[:, :, input_pos] = v
 
         return k_out, v_out
+
+
+class KVCachePagedAttention(nn.Module): ...
 
 
 def scaled_dot_product_attention(
@@ -99,17 +111,19 @@ class MHA(nn.Module):
         bias: bool = True,
         kv_cache: Optional[KVCache] = None,
         sdpa: Callable = F.scaled_dot_product_attention,
-        is_causal: bool = False,
+        device=None,
+        dtype=None,
     ) -> None:
         super().__init__()
-        assert embed_dim % num_heads == 0, "Embedding dimension must be divisible by the number of heads."
+        assert (
+            embed_dim % num_heads == 0
+        ), "Embedding dimension must be divisible by the number of heads."
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.dropout_p = dropout_p
         self.bias = bias
         self.kv_cache = kv_cache
         self.sdpa = sdpa
-        self.is_causal = is_causal
         # if self.is_causal:
         #     self.register_buffer("attn_mask", torch.tril(torch.ones(1024, 1024))
 
@@ -117,12 +131,21 @@ class MHA(nn.Module):
         self.scale = 1 / math.sqrt(self.qkv_dim)
 
         # key, query, value projections for all heads, but in a batch
-        self.qkv_proj = nn.Linear(embed_dim, 3 * embed_dim, bias=bias)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.qkv_proj = nn.Linear(
+            embed_dim, 3 * embed_dim, bias=bias, device=device, dtype=dtype
+        )
+        self.out_proj = nn.Linear(
+            embed_dim, embed_dim, bias=bias, device=device, dtype=dtype
+        )
 
         self.dropout = nn.Dropout(dropout_p)
 
-    def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None, input_pos: Optional[Tensor] = None) -> Tensor:
+    def forward(
+        self,
+        x: Tensor,
+        attn_mask: Optional[Tensor] = None,
+        input_pos: Optional[Tensor] = None,
+    ) -> Tensor:
         batch_size, _, _ = x.size()
 
         q, k, v = self.qkv_proj(x).chunk(3, dim=-1)
@@ -138,7 +161,14 @@ class MHA(nn.Module):
         else:
             dropout_p = 0
 
-        x = self.sdpa(q, k, v, attn_mask=attn_mask, is_causal=self.is_causal, dropout_p=dropout_p, scale=self.scale)
+        x = self.sdpa(
+            q,
+            k,
+            v,
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+            scale=self.scale,
+        )
         x = x.transpose(1, 2).contiguous().view(batch_size, -1, self.embed_dim)
         x = self.out_proj(x)
         x = self.dropout(x)  # necessary?
@@ -162,6 +192,8 @@ class MultiQueryAttention(nn.Module):
         bias: bool = True,
         sdpa: Callable = F.scaled_dot_product_attention,
         is_causal: bool = False,
+        device=None,
+        dtype=None,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -175,25 +207,52 @@ class MultiQueryAttention(nn.Module):
         self.head_dim = embed_dim // num_q_heads
         self.scale = 1 / math.sqrt(embed_dim)
 
-        self.wq = nn.Linear(embed_dim, num_q_heads * self.head_dim, bias=bias)
-        self.wk = nn.Linear(embed_dim, 1 * self.head_dim, bias=bias)
-        self.wv = nn.Linear(embed_dim, 1 * self.head_dim, bias=bias)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.wq = nn.Linear(
+            embed_dim,
+            num_q_heads * self.head_dim,
+            bias=bias,
+            device=device,
+            dtype=dtype,
+        )
+        self.wk = nn.Linear(
+            embed_dim, 1 * self.head_dim, bias=bias, device=device, dtype=dtype
+        )
+        self.wv = nn.Linear(
+            embed_dim, 1 * self.head_dim, bias=bias, device=device, dtype=dtype
+        )
+        self.out_proj = nn.Linear(
+            embed_dim, embed_dim, bias=bias, device=device, dtype=dtype
+        )
         self.dropout = nn.Dropout(dropout_p)
 
     def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
         bsz, _, _ = x.size()
 
         q = self.wq(x).view(bsz, -1, self.num_q_heads, self.head_dim).transpose(1, 2)
-        k = self.wk(x).view(bsz, -1, 1, self.head_dim).expand(-1, -1, self.num_q_heads, -1)
-        v = self.wv(x).view(bsz, -1, 1, self.head_dim).expand(-1, -1, self.num_q_heads, -1)
+        k = (
+            self.wk(x)
+            .view(bsz, -1, 1, self.head_dim)
+            .expand(-1, -1, self.num_q_heads, -1)
+        )
+        v = (
+            self.wv(x)
+            .view(bsz, -1, 1, self.head_dim)
+            .expand(-1, -1, self.num_q_heads, -1)
+        )
 
         if self.training:
             dropout_p = self.dropout_p
         else:
             dropout_p = 0
 
-        x = self.sdpa(q, k, v, attn_mask=attn_mask, is_causal=self.is_causal, dropout_p=dropout_p, scale=self.scale)
+        x = self.sdpa(
+            q,
+            k,
+            v,
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+            scale=self.scale,
+        )
         x = x.transpose(1, 2).contiguous().view(bsz, -1, self.embed_dim)
         x = self.out_proj(x)
         return x
@@ -208,7 +267,8 @@ class GroupedQueryAttention(nn.Module):
         dropout_p: float = 0,
         bias: bool = True,
         sdpa: Callable = F.scaled_dot_product_attention,
-        is_causal: bool = True,
+        device=None,
+        dtype=None,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -217,16 +277,35 @@ class GroupedQueryAttention(nn.Module):
         self.dropout_p = dropout_p
         self.bias = bias
         self.sdpa = sdpa
-        self.is_causal = is_causal
 
         self.head_dim = embed_dim // num_q_heads
         self.scale = 1 / math.sqrt(embed_dim)
         self.kv_repeats = num_q_heads // num_kv_heads
 
-        self.wq = nn.Linear(embed_dim, num_q_heads * self.head_dim, bias=bias)
-        self.wk = nn.Linear(embed_dim, num_kv_heads * self.head_dim, bias=bias)
-        self.wv = nn.Linear(embed_dim, num_kv_heads * self.head_dim, bias=bias)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.wq = nn.Linear(
+            embed_dim,
+            num_q_heads * self.head_dim,
+            bias=bias,
+            device=device,
+            dtype=dtype,
+        )
+        self.wk = nn.Linear(
+            embed_dim,
+            num_kv_heads * self.head_dim,
+            bias=bias,
+            device=device,
+            dtype=dtype,
+        )
+        self.wv = nn.Linear(
+            embed_dim,
+            num_kv_heads * self.head_dim,
+            bias=bias,
+            device=device,
+            dtype=dtype,
+        )
+        self.out_proj = nn.Linear(
+            embed_dim, embed_dim, bias=bias, device=device, dtype=dtype
+        )
 
     def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
         bsz, _, _ = x.size()
@@ -245,7 +324,14 @@ class GroupedQueryAttention(nn.Module):
         else:
             dropout_p = 0
 
-        x = self.sdpa(q, k, v, attn_mask=attn_mask, is_causal=self.is_causal, dropout_p=dropout_p, scale=self.scale)
+        x = self.sdpa(
+            q,
+            k,
+            v,
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+            scale=self.scale,
+        )
         x = x.transpose(1, 2).contiguous().view(bsz, -1, self.embed_dim)
         x = self.out_proj(x)
         return x
@@ -254,36 +340,10 @@ class GroupedQueryAttention(nn.Module):
 GQA = GroupedQueryAttention
 
 
-class GroupedQueryAttentionWithRoPE(nn.Module):
-    def __init__(
-        self,
-        embed_dim: int,
-        num_q_heads: int,
-        num_kv_heads: int,
-        dropout_p: float = 0,
-        bias: bool = True,
-        sdpa: Callable = F.scaled_dot_product_attention,
-        is_causal: bool = False,
-    ):
-        super().__init__()
-        self.embed_dim = embed_dim
-        self.num_q_heads = num_q_heads
-        self.num_kv_heads = num_kv_heads
-        self.dropout_p = dropout_p
-        self.bias = bias
-        self.sdpa = sdpa
-        self.is_causal = is_causal
-
-        self.head_dim = embed_dim // num_q_heads
-        self.scale = 1 / math.sqrt(embed_dim)
-        self.kv_repeats = num_q_heads // num_kv_heads
-
-        self.wq = nn.Linear(embed_dim, num_q_heads * self.head_dim, bias=bias)
-        self.wk = nn.Linear(embed_dim, num_kv_heads * self.head_dim, bias=bias)
-        self.wv = nn.Linear(embed_dim, num_kv_heads * self.head_dim, bias=bias)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-
-    def forward(self, x: Tensor, freqs_cis: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
+class GroupedQueryAttentionWithRoPE(GroupedQueryAttention):
+    def forward(
+        self, x: Tensor, freqs_cis: Tensor, attn_mask: Optional[Tensor] = None
+    ) -> Tensor:
         bsz, _, _ = x.size()
 
         q = self.wq(x).view(bsz, -1, self.num_q_heads, self.head_dim)
@@ -300,13 +360,21 @@ class GroupedQueryAttentionWithRoPE(nn.Module):
         else:
             dropout_p = 0
 
-        x = self.sdpa(q, k, v, attn_mask=attn_mask, is_causal=self.is_causal, dropout_p=dropout_p, scale=self.scale)
+        x = self.sdpa(
+            q,
+            k,
+            v,
+            attn_mask=attn_mask,
+            is_causal=self.is_causal,
+            dropout_p=dropout_p,
+            scale=self.scale,
+        )
         x = x.transpose(1, 2).contiguous().view(bsz, -1, self.embed_dim)
         x = self.out_proj(x)
         return x
 
 
-class GroupedQueryAttentionWithRoPEAndCache(nn.Module):
+class GroupedQueryAttentionWithRoPEAndCache(GroupedQueryAttentionWithRoPE):
     def __init__(
         self,
         embed_dim: int,
@@ -316,29 +384,31 @@ class GroupedQueryAttentionWithRoPEAndCache(nn.Module):
         dropout_p: float = 0,
         bias: bool = False,
         sdpa: Callable = F.scaled_dot_product_attention,
-        is_causal: bool = False,
+        device=None,
+        dtype=None,
     ):
-        super().__init__()
-        self.embed_dim = embed_dim
-        self.num_q_heads = num_q_heads
-        self.num_kv_heads = num_kv_heads
-        self.dropout_p = dropout_p
-        self.bias = bias
-        self.sdpa = sdpa
-        self.is_causal = is_causal
-        self.kv_cache = kv_cache
+        super().__init__(
+            embed_dim,
+            num_q_heads,
+            num_kv_heads,
+            dropout_p,
+            bias,
+            sdpa,
+            device,
+            dtype,
+        )
 
+        self.kv_cache = kv_cache
         head_dim = embed_dim // num_q_heads
         self.head_dim = head_dim
-        self.scale = 1 / math.sqrt(embed_dim)
-        self.kv_repeats = num_q_heads // num_kv_heads
 
-        self.wq = nn.Linear(embed_dim, num_q_heads * head_dim, bias=bias)
-        self.wk = nn.Linear(embed_dim, num_kv_heads * head_dim, bias=bias)
-        self.wv = nn.Linear(embed_dim, num_kv_heads * head_dim, bias=bias)
-        self.out_proj = nn.Linear(num_q_heads * head_dim, embed_dim, bias=bias)
-
-    def forward(self, x: Tensor, input_pos: Tensor, freqs_cis: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
+    def forward(
+        self,
+        x: Tensor,
+        input_pos: Tensor,
+        freqs_cis: Tensor,
+        attn_mask: Optional[Tensor] = None,
+    ) -> Tensor:
         bsz, _, _ = x.size()
 
         q = self.wq(x).view(bsz, -1, self.num_q_heads, self.head_dim)
@@ -363,7 +433,14 @@ class GroupedQueryAttentionWithRoPEAndCache(nn.Module):
         else:
             dropout_p = 0
 
-        x = self.sdpa(q, k, v, attn_mask=attn_mask, is_causal=self.is_causal, dropout_p=dropout_p, scale=self.scale)
+        x = self.sdpa(
+            q,
+            k,
+            v,
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+            scale=self.scale,
+        )
         x = x.transpose(1, 2).contiguous().view(bsz, -1, self.embed_dim)
         x = self.out_proj(x)
         return x
@@ -400,7 +477,11 @@ class CrossAttention(nn.Module):
         q = self.wq(q).reshape(B, n, self.num_heads, self.qkv_dim).permute(0, 2, 1, 3)
 
         B, N, C = x.shape
-        kv = self.wkv(x).reshape(B, N, 2, self.num_heads, self.qkv_dim).permute(2, 0, 3, 1, 4)
+        kv = (
+            self.wkv(x)
+            .reshape(B, N, 2, self.num_heads, self.qkv_dim)
+            .permute(2, 0, 3, 1, 4)
+        )
         k, v = kv[0], kv[1]  # (batch_size, num_heads, seq_len, feature_dim_per_head)
 
         with torch.backends.cuda.sdp_kernel():
@@ -408,3 +489,6 @@ class CrossAttention(nn.Module):
 
         q = q.transpose(1, 2).reshape(B, n, C)
         return q
+
+
+class SlidingWindowAttention(nn.Module): ...
