@@ -1,25 +1,19 @@
 install:
-	pipenv shell
-	pipenv install --dev
+	uv pip install -r pyproject.toml --all-extras
+	uv pip install -e .
 
 test:
-	python3 -m pytest -v -s .
+	uv run pytest -v -s tests
 
 fix:
-	ruff check -v --fix .
+	uv run ruff check -v --fix research
 
 watch:
-	ruff check . --watch
+	uv run ruff check research --watch
 
-format:
-	ruff check --fix .
-	ruff format .
+format: fix
+	uv run ruff format research
 
 static:
-	mypy .
+	uv run mypy research
 
-sync:
-	rsync -avz --delete --exclude-from=.gitignore . jean-zay:/gpfswork/rech/oyx/umg45bq/research
-
-live:
-	fswatch -l 1 -o . | while read f; do make sync; done
