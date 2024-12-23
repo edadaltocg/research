@@ -3,6 +3,19 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 
+class ReLUMath(nn.Module):
+    r"""
+    Rectified linear unit.
+
+    $$
+    f(t) = max\{t,0\}
+    $$
+    """
+
+    def forward(self, x: Tensor):
+        return torch.max(x, torch.zeros_like(x))
+
+
 class GELU(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         """return 0.5 * x * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * torch.pow(x, 3.0))))"""
