@@ -17,6 +17,12 @@ format: fix ## Format code
 static: ## Static type checking
 	uv run mypy research
 
+build-docs: ## Build the documentation with MkDocs
+	uv run mkdocs build
+
+serve-docs: ## Serve the documentation with MkDocs locally
+	uv run mkdocs serve
+
 help: ## Show this help message
 	@uv run python -c "import re; \
 	[[print(f'\033[36m{m[0]:<20}\033[0m {m[1]}') for m in re.findall(r'^([a-zA-Z_-]+):.*?## (.*)$$', open(makefile).read(), re.M)] for makefile in ('$(MAKEFILE_LIST)').strip().split()]"

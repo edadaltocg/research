@@ -25,3 +25,4 @@ ckpts*
 .env
 /logs/
 /pkg
+site/
