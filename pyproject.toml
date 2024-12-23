@@ -25,6 +25,7 @@ dependencies = [
   "torchvision>=0.19.1",
   "Pillow>=9.4.0",
   "torcheval",
+  "pydantic>=2.10.4",
 ]
 
 [tool.setuptools]

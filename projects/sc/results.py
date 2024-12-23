@@ -1,3 +1,4 @@
+import itertools
 import logging
 import ast
 import re
@@ -20,6 +21,8 @@ from torchtune import config
 from tqdm import tqdm
 
 from research.utils.logging import setup_logger
+
+pd.set_option("display.max_columns", None)
 
 log = logging.getLogger(__file__)
 
@@ -131,7 +134,7 @@ def preprocessing(
     dest_dir = os.path.join("output", "preprocessing", "sc")
     os.makedirs(dest_dir, exist_ok=True)
     log.info("Saving...")
-    torch.save(results, os.path.join(dest_dir, f"{model_id.replace("/", "_")}_{dataset_id}.pt"))
+    torch.save(results, os.path.join(dest_dir, f"{model_id.replace('/', '_')}_{dataset_id}.pt"))
     log.info("Done!")
     return
 
@@ -148,10 +151,11 @@ def acc_preprocessing(
     model_id = cfg.model_id
     dest_dir = os.path.join("output", "preprocessing", "sc")
     res = torch.load(
-        os.path.join(dest_dir, f"{model_id.replace("/", "_")}_{dataset_id}.pt"),
+        os.path.join(dest_dir, f"{model_id.replace('/', '_')}_{dataset_id}.pt"),
         weights_only=False,
         mmap=True,
     )
+    print(res["logits"][0][0].shape)
 
     # results.keys()=dict_keys(['tokens', 'model_final_answer', 'model_answers', 'logits', 'prompt_len', 'max_len', 'temperature', 'top_p', 'top_k', 't_prefill', 't_total', 'mask', 'question', 'answer', 'prompt', 'final_answer', 'seed', 'model_id', 'dataset_id'])
     # Define the Pydantic model
@@ -159,6 +163,7 @@ def acc_preprocessing(
         id: str
         final_answer: float
         model_final_answer: List[Any]
+        logits: List[List[float]]
         model_id: str
         dataset_id: str
         seed: int
@@ -191,10 +196,13 @@ def acc_preprocessing(
                 matches = re.findall(pattern, text)
                 mfa.extend([float(match) for match in matches])
 
+            logits = results["logits"][i].max(-1).values.numpy().tolist()
+
             data = DataModel(
                 id=str(hash(results["question"][i][0])),
                 final_answer=fa,
                 model_final_answer=mfa,
+                logits=logits,
                 model_id=results["model_id"][i],
                 dataset_id=results["dataset_id"][i],
                 seed=results["seed"][i],
@@ -208,8 +216,9 @@ def acc_preprocessing(
 
     df = pd.read_csv("/tmp/output.csv")
     df["model_final_answer"] = df["model_final_answer"].apply(str_to_list)
+    df["logits"] = df["logits"].apply(ast.literal_eval)
     assert (
-        df["model_final_answer"]
+        df["logits"]
         .apply(lambda x: isinstance(x, list) and all(isinstance(i, float) for i in x))
         .all()
     )
@@ -219,6 +228,7 @@ def acc_preprocessing(
         .agg({
             "final_answer": "first",
             "model_final_answer": lambda x: sum(x, []),
+            "logits": lambda x: sum(x, []),
             "model_id": "first",
             "dataset_id": "first",
             "seed": "first",
@@ -236,11 +246,18 @@ def acc_preprocessing(
         accuracy = (correct_count / total_count) * 100
         return accuracy
 
+    def is_correct(row):
+        final_answer = row["final_answer"]
+        model_answers = row["model_final_answer"]
+        corrects = [1 if ans == final_answer else 0 for ans in model_answers]
+        return corrects
+
     # Apply the function to each row and create a new column 'accuracy'
     df["accuracy"] = df.apply(compute_accuracy, axis=1)
+    df["is_correct"] = df.apply(is_correct, axis=1)
 
     dest_dir = os.path.join("output", "preprocessing", "sc")
-    filename = os.path.join(dest_dir, f"{model_id.replace("/", "_")}_{dataset_id}_acc.csv")
+    filename = os.path.join(dest_dir, f"{model_id.replace('/', '_')}_{dataset_id}_acc.csv")
 
     print(df)
     df.to_csv(filename, index=False)
@@ -255,32 +272,38 @@ def viz():
     df = pd.concat(dfs)
     models = df["model_id"].unique()
     datasets = df["dataset_id"].unique()
-    df = df.query(f"model_id = '{models[0]}' and dataset_id = '{datasets[0]}'")
-    x = df["final_answer"]
-    y = df["accuracy"]
-    plt.figure()
-    sns.jointplot(x=x, y=y, kind="scatter", marginal_kws=dict(bins=20, fill=True))
-    plt.title(f"{models[0]} - {datasets[0]}")
-    plt.show()
+    for model_id, dataset_id in itertools.product(models, datasets):
+        print(model_id, dataset_id)
+        df_ = df.query(f"model_id == '{model_id}' and dataset_id == '{dataset_id}'")
+        x = df_["final_answer"]
+        y = df_["accuracy"]
+        print("figure:")
+        g = sns.jointplot(x=x, y=y, kind="scatter", marginal_kws=dict(bins=20, fill=True))
+        txt = f"""{model_id}
+{dataset_id}
+Avg: {sum(y) / len(y):.2f}
+Maj: {sum(y > 50) * 100 / len(y):0.2f}
+Pass@1: {sum(y > 0) * 100 / len(y):0.2f}
+N: 64
+"""
+        plt.figtext(
+            0.01,
+            0.01,
+            txt,
+            wrap=True,
+            horizontalalignment="left",
+            fontsize=12,
+            bbox=dict(facecolor="white", alpha=0.8),
+        )
+        # g.plot_joint(sns.kdeplot, color="r", zorder=0, levels=6)
+        # g.plot_marginals(sns.rugplot, color="r", height=-0.15, clip_on=False)
+        plt.xscale("log")
+        plt.savefig(
+            os.path.join(dest_dir, f"sc_{model_id.replace('/', '_')}_{dataset_id}.png"),
+            bbox_inches="tight",
+        )
 
     return
-    # Results extraction
-    hidden = res["hidden"]  # n, p, s, d
-    logits = res["logits"]  # n, p, s, k
-    tokens = res["tokens"]  # n, p, s
-    answer = res["answer"]  # n, p
-    gtruth = res["gtruth"]  # n
-
-    # Step 1: Majority Vote of Answers
-    majority_vote_answers = [Counter(answer_set).most_common(1)[0][0] for answer_set in answer]
-
-    # Step 2: Calculate Accuracy
-    correct = np.array(majority_vote_answers) == np.array(gtruth)
-    accuracy = np.sum(correct) / len(gtruth)
-    print(f"Accuracy: {accuracy * 100:.2f}%")
-
-    # Step 3: Plot the Tokens Log Probs Trajectory
-    plot_token_trajectories(logits, tokens, correct)
 
 
 if __name__ == "__main__":
@@ -289,4 +312,5 @@ if __name__ == "__main__":
     Fire({
         "preprocessing": preprocessing,
         "acc_preprocessing": acc_preprocessing,
+        "viz": viz,
     })
