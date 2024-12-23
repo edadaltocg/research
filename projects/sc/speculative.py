@@ -1,12 +1,11 @@
 import torch
-from torch import Tensor
-from torcn.nn import Module
 import torch.nn.functional as F
+from torch import Tensor, nn
 
 
 def speculative_decoding(
-    net: Module,
-    small_net: Module,
+    net: nn.Module,
+    small_net: nn.Module,
     prompt: Tensor,
     seq_len: int,
     *,
@@ -17,8 +16,9 @@ def speculative_decoding(
     pad_id=0,
 ):
     """
-    eq. algorithm 1 in paper https://arxiv.org/abs/2211.17192
+    Algorithm 1 in paper https://arxiv.org/abs/2211.17192
     """
+    # TODO:
 
     batch, prompt_seq_len, out, device = *prompt.shape, prompt.clone(), prompt.device
     sample_num_times = max(0, seq_len - prompt_seq_len)
@@ -76,7 +76,7 @@ def speculative_decoding(
         p = p.gather(-1, q_sampled_out)
         q = small_prob.gather(-1, q_sampled_out) * lenience
 
-        p, q = [rearrange(t, "b n 1 -> b n") for t in (p, q)]
+        p, q = (rearrange(t, "b n 1 -> b n") for t in (p, q))
 
         r = random_uniform = torch.zeros_like(q).float().uniform_(0, 1)
 
