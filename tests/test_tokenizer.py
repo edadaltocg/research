@@ -1,8 +1,7 @@
 import pysnooper
-from transformers import AutoTokenizer
-
 from dnn.data import preprocess_text
 from dnn.tokenizer import Tokenizer, train_sp_tokenizer_from_iterator
+from transformers import AutoTokenizer
 
 
 @pysnooper.snoop()

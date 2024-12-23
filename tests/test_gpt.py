@@ -1,10 +1,9 @@
-from typing import OrderedDict
+from collections import OrderedDict
 
 import pysnooper
 import torch
-from transformers import GPT2LMHeadModel, GPT2Model, GPT2Tokenizer
-
 from gpt.model import GPT
+from transformers import GPT2LMHeadModel, GPT2Model, GPT2Tokenizer
 
 
 def convert_gpt2_state_dict(state_dict: OrderedDict) -> OrderedDict:

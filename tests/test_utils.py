@@ -2,7 +2,6 @@ from pathlib import Path
 
 import torch
 from torch import nn
-
 from utils.utils import LoadPreTrainedModelWithLowMemoryContext
 
 dim = 1024

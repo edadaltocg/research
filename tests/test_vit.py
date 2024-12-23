@@ -1,6 +1,5 @@
 import torch
 import torchvision
-
 from utils import create_feature_extractor, get_graph_node_names, seed_all
 from vit.model import (
     VisionTransformerEncoder,

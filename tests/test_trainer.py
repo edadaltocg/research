@@ -3,9 +3,8 @@ import logging
 import torch
 import torch.nn.functional as F
 import torch.utils.data
-from torch import nn, optim
-
 from dnn.trainer_class import Trainer
+from torch import nn, optim
 
 log = logging.getLogger(__name__)
 

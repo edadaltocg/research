@@ -1,11 +1,10 @@
 from copy import deepcopy
 
-import torch
-from torch import nn
-
 import dnn.data
 import dnn.transformer
+import torch
 import utils
+from torch import nn
 
 utils.seed_all(42)
 

@@ -1,8 +1,7 @@
 import torch.distributed as dist
 import torch.utils.data
-from torch.utils.data.distributed import DistributedSampler
-
 import utils
+from torch.utils.data.distributed import DistributedSampler
 
 
 def test_step_accumulation():
