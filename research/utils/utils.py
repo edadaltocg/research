@@ -1,20 +1,23 @@
 import logging
 import math
-import os
 import random
 import time
 from contextlib import suppress
-from datetime import datetime, timedelta
+from datetime import datetime
 from itertools import chain
+from pathlib import Path
+from typing import Any, Dict, Union
 
 import numpy as np
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 import torch.utils.benchmark as benchmark
 from PIL import Image
-from torch import Tensor, nn, optim
+from safetensors import safe_open
+from torch import Tensor, is_distributed, nn, optim
 from tqdm import tqdm
+
+from research.utils.distrib import is_dist_avail_and_initialized, is_main_process
 
 log = logging.getLogger(__name__)
 
@@ -40,69 +43,6 @@ def seed_all(seed: int = 42):
 
 def num_trainable_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
-def distrib_setup(backend="nccl", master_addr="localhost", master_port="12355"):
-    """Run with torchrun:
-
-    Single node:
-        torchrun
-            --standalone
-            --nnodes=1
-            --nproc-per-node=$NUM_TRAINERS
-            YOUR_TRAINING_SCRIPT.py (--arg1 ... train script args...)
-    """
-    master_addr = os.environ.get("MASTER_ADDR", master_addr)
-    master_port = os.environ.get("MASTER_PORT", master_port)
-
-    os.environ["MASTER_ADDR"] = master_addr
-    os.environ["MASTER_PORT"] = master_port
-
-    # initialize the process group
-    dist.init_process_group(backend, timeout=timedelta(seconds=1800))
-
-
-def distrib_cleanup():
-    if is_dist_avail_and_initialized():
-        dist.destroy_process_group()
-
-
-def distrib_spawn(fn, *args):
-    WORLD_SIZE = torch.cuda.device_count()
-    mp.spawn(fn, args=(WORLD_SIZE, args), nprocs=WORLD_SIZE, join=True)
-
-
-def is_dist_avail_and_initialized():
-    if not dist.is_available():
-        return False
-    if not dist.is_initialized():
-        return False
-    return True
-
-
-def get_world_size():
-    if not is_dist_avail_and_initialized():
-        return 1
-    return dist.get_world_size()
-
-
-def get_rank():
-    if not is_dist_avail_and_initialized():
-        return 0
-    return dist.get_rank()
-
-
-def get_local_rank():
-    return int(os.environ.get("LOCAL_RANK", 0))
-
-
-def is_main_process():
-    return get_rank() == 0
-
-
-def print_rank0(msg):
-    if is_main_process():
-        print(msg)
 
 
 def clear_gpu_cache(rank=None):
@@ -301,9 +241,7 @@ class LoadPreTrainedModelWithLowMemoryContext:
         self.inception_device = inception_device
 
     def __enter__(self):
-        w_mmaped = torch.load(
-            str(self.state_dict_path), map_location=self.target_device, mmap=True
-        )
+        w_mmaped = torch.load(str(self.state_dict_path), map_location=self.target_device, mmap=True)
         log.info(
             f"Loading state_dict to memory with {self.target_device=} and {self.target_dtype=}"
         )
@@ -340,9 +278,7 @@ class LoadPreTrainedModelWithLowMemoryContext:
                 log.warning(f"Key {k} not found in state_dict, copying to state_dict")
                 self.state_dict[k] = v.clone().to(self.target_device, self.target_dtype)
         for submodule_name, submodule in model.named_modules():
-            for param_name, param in chain(
-                submodule.named_parameters(), submodule.named_buffers()
-            ):
+            for param_name, param in chain(submodule.named_parameters(), submodule.named_buffers()):
                 if len(param_name.split(".")) == 1:
                     # is leaf module
                     key = f"{submodule_name}{'.' if len(submodule_name) else ''}{param_name}"
@@ -382,9 +318,7 @@ def num_parameters(module: nn.Module, requires_grad: bool | None = None) -> int:
     return total
 
 
-def flops_per_param(
-    max_seq_length: int, n_layer: int, n_embd: int, n_params: int
-) -> int:
+def flops_per_param(max_seq_length: int, n_layer: int, n_embd: int, n_params: int) -> int:
     flops_per_token = (
         2 * n_params
     )  # each parameter is used for a MAC (2 FLOPS) per network operation
@@ -422,3 +356,44 @@ def estimate_flops(model: nn.Module, training: bool) -> int:
     # forward + backward
     frozen_ops_per_step = 2 if training else 1
     return ops_per_step * trainable_flops + frozen_ops_per_step * frozen_flops
+
+
+def safe_torch_load(
+    checkpoint_path: Union[Path, str], weights_only: bool = True, mmap: bool = True
+) -> Dict[str, Any]:
+    """
+    Utility to load a checkpoint file onto CPU in a safe manner. Provides separate handling for
+    safetensors files.
+
+    Args:
+        checkpoint_path (Union[Path, str]): Path to the checkpoint file.
+        weights_only (bool): Whether to load only tensors, primitive types, and dictionaries
+            (passthrough to torch.load). Default: True
+        mmap (bool): Whether to mmap from disk into CPU memory. Default: True
+
+    Returns:
+        Dict[str, Any]: State dict from the checkpoint file.
+
+    Raises:
+        ValueError: If the checkpoint file is not found or cannot be loaded.
+    """
+    try:
+        # convert the path into a string since pathlib Path and mmap don't work
+        # well together
+        is_safetensors_file = True if str(checkpoint_path).endswith(".safetensors") else False
+        if is_safetensors_file:
+            result = {}
+            with safe_open(checkpoint_path, framework="pt", device="cpu") as f:
+                for k in f.keys():
+                    result[k] = f.get_tensor(k)
+            state_dict = result
+        else:
+            state_dict = torch.load(
+                str(checkpoint_path),
+                map_location="cpu",
+                mmap=mmap,
+                weights_only=weights_only,
+            )
+    except Exception as e:
+        raise ValueError(f"Unable to load checkpoint from {checkpoint_path}. ") from e
+    return state_dict
