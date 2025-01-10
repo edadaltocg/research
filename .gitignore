@@ -1,5 +1,5 @@
 # Python
-__pycache__
+__pycache__/
 *.pyc
 *.egg-info
 dist
@@ -26,3 +26,5 @@ ckpts*
 /logs/
 /pkg
 site/
+
+*.unison*
