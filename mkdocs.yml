@@ -44,7 +44,7 @@ theme:
     - toc.follow
     - navigation.footer
   extra:
-    homepage: https://futureframe.ai
+    homepage: https://example.com
     consent:
       title: Cookie consent
       description: >-

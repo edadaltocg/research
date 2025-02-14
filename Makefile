@@ -1,6 +1,15 @@
+venv: ## Create virtual environment at .venv/
+	uv venv
+
 install: ## Install dependencies
+	. .venv/bin/activate
+	uv pip install torch torchvision torchaudio
 	uv pip install -r pyproject.toml --all-extras
 	uv pip install -e .
+
+export: ## Export dependencies to .txt files
+	uv export --all-extras > dev-requirements.txt
+	uv export > requirements.txt
 
 test: ## Run tests
 	uv run pytest -v -s tests
@@ -17,10 +26,10 @@ format: fix ## Format code
 static: ## Static type checking
 	uv run mypy research
 
-build-docs: ## Build the documentation with MkDocs
+docs: ## Build the documentation with MkDocs
 	uv run mkdocs build
 
-serve-docs: ## Serve the documentation with MkDocs locally
+preview: ## Serve the documentation with MkDocs locally
 	uv run mkdocs serve
 
 help: ## Show this help message
@@ -28,5 +37,5 @@ help: ## Show this help message
 	[[print(f'\033[36m{m[0]:<20}\033[0m {m[1]}') for m in re.findall(r'^([a-zA-Z_-]+):.*?## (.*)$$', open(makefile).read(), re.M)] for makefile in ('$(MAKEFILE_LIST)').strip().split()]"
 
 .DEFAULT_GOAL := help
-.PHONY: install test fix watch format static help
+.PHONY: venv install export test fix watch format static docs preview help
 
