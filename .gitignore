@@ -4,19 +4,14 @@ __pycache__/
 *.egg-info
 dist
 
-# Log
-*.log
-*.log.*
-*.json
-*.jsonl
-
 # Other
 .DS_Store
-wandb
-output/
+/wandb
+/output
 
-checkpoints
-ckpts*
+/checkpoints
+
+/datasets
 
 .ipynb_checkpoints
 *.ipynb
@@ -28,3 +23,4 @@ ckpts*
 site/
 
 *.unison*
+

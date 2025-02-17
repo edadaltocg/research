@@ -11,12 +11,12 @@ dependencies = [
   "einops",
   "fire",
   "matplotlib",
-  "omegaconf",
   "psutil",
   "seaborn",
   "tiktoken",
   "torcheval",
   "pydantic",
+  "torchinfo>=1.8.0",
 ]
 
 [tool.setuptools]
@@ -31,6 +31,15 @@ docs = [
   "mkdocstrings-python>=1.12.2",
   "mkdocs-gen-files>=0.5.0",
   "mkdocs-section-index>=0.3.9",
+]
+vision = [
+    "albumentations>=2.0.4",
+    "opencv-python>=4.11.0.86",
+    "timm>=1.0.14",
+]
+trainer = [
+    "tensorboard>=2.19.0",
+    "torch-tb-profiler>=0.4.3",
 ]
 
 [build-system]

@@ -1,2 +1,8 @@
 *.pdf binary
 *.pdf -merge
+*.py eol=lf
+*.rst eol=lf
+*.md eol=lf
+*.mdx eol=lf
+*.pt binary
+
