@@ -97,15 +97,11 @@ class LoRALinear(LoRALayer):
 
                 weight = self.linear.weight
                 # dequantize the pretrained weights
-                weight_data = bnb.functional.dequantize_4bit(
-                    weight.data, weight.quant_state
-                ).to(lora_data.dtype)
+                weight_data = bnb.functional.dequantize_4bit(weight.data, weight.quant_state).to(lora_data.dtype)
                 # add pretrained and LoRA weights
                 weight_data += lora_data
                 # assign updated weights and quantize by moving to CUDA device
-                self.linear.weight = bnb.nn.Params4bit(
-                    weight_data, requires_grad=False, **weight.__dict__
-                )
+                self.linear.weight = bnb.nn.Params4bit(weight_data, requires_grad=False, **weight.__dict__)
                 self.linear.weight.cuda(weight.device)
             else:
                 raise NotImplementedError(
@@ -121,9 +117,5 @@ class LoRALinear(LoRALayer):
         pretrained = self.linear(x)
         if self.r == 0 or self.merged:
             return pretrained
-        lora = (
-            self.lora_dropout(x)
-            @ self.lora_A.transpose(0, 1)
-            @ self.lora_B.transpose(0, 1)
-        ) * self.scaling
+        lora = (self.lora_dropout(x) @ self.lora_A.transpose(0, 1) @ self.lora_B.transpose(0, 1)) * self.scaling
         return pretrained + lora

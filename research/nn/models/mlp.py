@@ -25,6 +25,7 @@ class MLP(nn.Module):
         self.linear2 = nn.Linear(inner_dim, embed_dim, device=device, dtype=dtype)
         self.dropout2 = nn.Dropout(dropout_p)
 
+    def reset_parameters(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
@@ -47,17 +48,3 @@ class LinearClassificationHead(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.fc(x)
-
-
-class LLaMAMLP(nn.Module):
-    def __init__(self, dim, hidden_dim, bias=False) -> None:
-        super().__init__()
-        self.linear1 = nn.Linear(dim, hidden_dim, bias=bias)
-        self.linear2 = nn.Linear(dim, hidden_dim, bias=bias)
-        self.proj = nn.Linear(hidden_dim, dim, bias=bias)
-
-    def forward(self, x: Tensor) -> Tensor:
-        x_fc_1 = self.linear1(x)
-        x_fc_2 = self.linear2(x)
-        x = F.silu(x_fc_1) * x_fc_2
-        return self.proj(x)

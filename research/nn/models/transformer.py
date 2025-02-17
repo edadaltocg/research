@@ -40,8 +40,6 @@ from collections.abc import Callable
 from copy import deepcopy
 
 import torch
-from nn.modeling.attention import KVCache
-from nn.modeling.pos_encoding import precompute_freqs_cis
 from torch import Tensor, nn
 
 
@@ -73,6 +71,34 @@ def init_weights(
         if init_fn == "normal" and getattr(module, "_is_residual", False):
             with torch.no_grad():
                 module.weight.div_(math.sqrt(2 * n_layers))
+
+
+class CLSToken(nn.Module):
+    def __init__(self, embed_dim):
+        """
+        Initialize the CLS Token module.
+
+        Args:
+            embed_dim (int): The dimension of the embedding space.
+        """
+        super().__init__()
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.cls_token)
+
+    def forward(self, x: Tensor) -> Tensor:
+        # Get the batch size from the input tensor
+        batch_size = x.size(0)
+
+        # Expand the cls_token to match the batch size
+        cls_tokens = self.cls_token.expand(batch_size, -1, -1)
+
+        # Prepend the cls_token to the input sequence
+        x = torch.cat((cls_tokens, x), dim=1)
+
+        return x
 
 
 class VanillaTransformerEncoderLayer(nn.Module):
@@ -114,7 +140,7 @@ class VanillaTransformerEncoder(nn.Module):
         encoder_layer: nn.Module,
         num_encoder_layers=6,
         dropout_p=0.1,
-        cls_token: Tensor | None = None,
+        cls_token: nn.Module | None = None,
         norm: nn.Module | None = None,
         pool: Callable | None = None,
         head: nn.Module | None = None,
@@ -127,25 +153,17 @@ class VanillaTransformerEncoder(nn.Module):
         self.dropout_p = dropout_p
 
         self.dropout = nn.Dropout(dropout_p)
-        self.layers = nn.ModuleList([encoder_layer for _ in range(num_encoder_layers)])
-        # layers: OrderedDict[str, nn.Module] = OrderedDict(
-        #     {f"{i}": deepcopy(encoder_layer) for i in range(num_encoder_layers)}
-        # )
-        # self.layers = nn.Sequential(layers)
+        self.layers = nn.ModuleList([deepcopy(encoder_layer) for _ in range(num_encoder_layers)])
         self.norm = norm
         self.pool = pool
         self.head = head
-
-        for name, module in self.named_modules():
-            if hasattr(module, "reset_parameters"):
-                module.reset_parameters()
 
     def forward(self, x: Tensor, attn_mask: Tensor | None = None) -> Tensor:
         # (b, s, ...) -> (b, s, d)
         x = self.embedding(x)
         if self.cls_token is not None:
             # (b, s, d) -> (b, s + 1, d)
-            x = torch.cat([self.cls_token.expand(x.size(0), -1, -1), x], dim=1)
+            x = self.cls_token(x)
         # (b, s, d) -> (b, s, d) + (b, s, d)
         x += self.pos_encoding(x)
         x = self.dropout(x)
@@ -159,166 +177,6 @@ class VanillaTransformerEncoder(nn.Module):
             # (b, s|1, d) -> (b, s|1, k)
             x = self.head(x)
         return x
-
-
-# When refered to a "Transformer" it usually means the encoder part.
-class TransformerWithRoPEAndCacheLayer(VanillaTransformerEncoderLayer):
-    def forward(
-        self,
-        x: Tensor,
-        input_pos: Tensor,
-        freqs_cis: Tensor,
-        attn_mask: Tensor | None = None,
-    ) -> Tensor:
-        if self.norm_first:
-            # self-attention
-            x = x + self.attn(
-                self.norm1(x),
-                freqs_cis=freqs_cis,
-                input_pos=input_pos,
-                attn_mask=attn_mask,
-            )
-            # mlp
-            x = x + self.mlp(self.norm2(x))
-        else:
-            # self-attention
-            x = self.norm1(x + self.attn(x, freqs_cis=freqs_cis, input_pos=input_pos, attn_mask=attn_mask))
-            # mlp
-            x = self.norm2(x + self.mlp(x))
-        return x
-
-
-class TransformerWithRoPE(nn.Module):
-    def __init__(
-        self,
-        embedding: nn.Module,
-        encoder_layer: TransformerWithRoPEAndCacheLayer,
-        block_size: int,
-        num_encoder_layers=6,
-        dropout_p=0.1,
-        num_kv_heads: int = 8,
-        num_q_heads: int = 8,
-        cls_token: Tensor | None = None,
-        norm: nn.Module | None = None,
-        pool: Callable | None = None,
-        head: nn.Module | None = None,
-        device=None,
-        dtype=None,
-    ) -> None:
-        super().__init__()
-        # variables
-        self.embedding = embedding
-        self.cls_token = cls_token
-        self.num_encoder_layers = num_encoder_layers
-        self.dropout_p = dropout_p
-        self.block_size = block_size
-
-        # caches
-        self.freqs_cis = None
-        self.causal_mask = None
-        self.max_batch_size = -1
-        self.max_seq_length = -1
-        self.num_kv_heads = encoder_layer.attn.num_kv_heads
-        self.embed_dim = encoder_layer.attn.embed_dim
-        self.head_dim = self.embed_dim // self.n_head
-
-        # layers
-        self.layers = nn.ModuleList([encoder_layer for _ in range(num_encoder_layers)])
-        self.norm = norm
-        self.pool = pool
-        self.head = head
-
-        self.setup_caches(block_size)
-
-        for name, module in self.named_modules():
-            if hasattr(module, "reset_parameters"):
-                module.reset_parameters()
-
-    def setup_caches(self, max_seq_length: int):
-        if self.max_seq_length >= max_seq_length:
-            return
-        self.max_seq_length = max_seq_length
-
-        self.freqs_cis = precompute_freqs_cis(self.head_dim, self.block_size)
-        self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
-
-    def forward(self, x: Tensor, input_pos: Tensor, attn_mask: Tensor | None = None) -> Tensor:
-        assert self.freqs_cis is not None, "Please call setup_caches before using the model."
-        # (b, s, ...) -> (b, s, d)
-        x = self.embedding(x)
-        if self.cls_token is not None:
-            # (b, s, d) -> (b, s + 1, d)
-            x = torch.cat([self.cls_token.expand(x.size(0), -1, -1), x], dim=1)
-        # (b, s, d) -> (b, s, d) + (b, s, d)
-        x = self.dropout(x)
-
-        freqs_cis = self.freqs_cis[input_pos]
-        for layer in self.layers:
-            x = layer(x, input_pos, freqs_cis, attn_mask)
-
-        if self.norm is not None:
-            x = self.norm(x)
-        if self.pool is not None:
-            x = self.pool(x)
-        if self.head is not None:
-            # (b, s|1, d) -> (b, s|1, k)
-            x = self.head(x)
-
-        return x
-
-
-class TransformerWithRoPEAndKVCache(TransformerWithRoPE):
-    def __init__(
-        self,
-        embedding: nn.Module,
-        encoder_layer: TransformerWithRoPEAndCacheLayer,
-        block_size: int,
-        max_batch_size: int,
-        num_encoder_layers=6,
-        dropout_p=0.1,
-        cls_token: Tensor | None = None,
-        norm: nn.Module | None = None,
-        pool: Callable | None = None,
-        head: nn.Module | None = None,
-        device=None,
-        dtype=None,
-    ) -> None:
-        # variables
-        super().__init__(
-            embedding,
-            encoder_layer,
-            block_size,
-            num_encoder_layers,
-            dropout_p,
-            cls_token,
-            norm,
-            pool,
-            head,
-            device,
-            dtype,
-        )
-        # caches
-        self.max_batch_size = -1
-
-        self.setup_caches(max_batch_size, block_size)
-
-        for name, module in self.named_modules():
-            if hasattr(module, "reset_parameters"):
-                module.reset_parameters()
-
-    def setup_caches(self, max_batch_size: int, max_seq_length: int):
-        if self.max_seq_length >= max_seq_length and self.max_batch_size >= max_batch_size:
-            return
-        self.max_seq_length = max_seq_length
-        self.max_batch_size = max_batch_size
-        for b in self.layers:
-            b.attn.kv_cache = KVCache(max_batch_size, max_seq_length, self.num_kv_heads, self.head_dim)
-
-        self.freqs_cis = precompute_freqs_cis(self.head_dim, self.block_size)
-        self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
-
-
-Transformer = TransformerWithRoPEAndKVCache
 
 
 class TransformerDecoderLayer(nn.Module):

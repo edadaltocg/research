@@ -47,9 +47,7 @@ class DummyImageDataset(Dataset):
 
 
 class DummyImageClassificationDataset(Dataset):
-    def __init__(
-        self, n: int = 1000, num_classes: int = 1000, size: int = 224, *args, **kwargs
-    ):
+    def __init__(self, n: int = 1000, num_classes: int = 1000, size: int = 224, *args, **kwargs):
         self.n = n
         self.num_classes = num_classes
         self.size = size
@@ -65,9 +63,7 @@ class DummyImageClassificationDataset(Dataset):
 
 
 class DummyTextDataset(Dataset):
-    def __init__(
-        self, n: int = 1000, max_len: int = 100, vocab_size: int = 1000, *args, **kwargs
-    ):
+    def __init__(self, n: int = 1000, max_len: int = 100, vocab_size: int = 1000, *args, **kwargs):
         self.n = n
         self.max_len = max_len
         self.vocab_size = vocab_size
@@ -154,18 +150,14 @@ class MemoryMappedDataset(Dataset):
         The tensors should have always same size (no variable length allowed).
     """
 
-    def __init__(
-        self, root: str, transform: Callable | None = None, x_key="x", y_key="y"
-    ):
+    def __init__(self, root: str, transform: Callable | None = None, x_key="x", y_key="y"):
         self.memmaps = {}
         self.x_key = x_key
         self.y_key = y_key
         self.transform = transform
         metadata = torch.load(Path(root) / "metadata.pt")
         for d in metadata:
-            self.memmaps[d["key"]] = np.memmap(
-                d["filename"], dtype=d["dtype"], mode="r+", shape=d["shape"]
-            )
+            self.memmaps[d["key"]] = np.memmap(d["filename"], dtype=d["dtype"], mode="r+", shape=d["shape"])
         self.size = metadata["size"]
 
     def __getitem__(self, index):
@@ -183,9 +175,7 @@ class MemoryMappedDataset(Dataset):
             gc.collect()
 
     @staticmethod
-    def from_dataloader(
-        dataloader, root, transform: Callable | None = None, x_key="x", y_key="y"
-    ):
+    def from_dataloader(dataloader, root, transform: Callable | None = None, x_key="x", y_key="y"):
         Path(root).mkdir(parents=True, exist_ok=True)
         memmaps = {}
         size = len(dataloader.dataset)  # type: ignore
@@ -280,9 +270,7 @@ class MemoryMapped1DDataset(Dataset):
                 continue
             end = begin + d["shape"][0] // chunk_size
             self.size += d["shape"][0] // chunk_size
-            data = np.memmap(
-                d["filename"], dtype=d["dtype"], mode="r+", shape=d["shape"]
-            )
+            data = np.memmap(d["filename"], dtype=d["dtype"], mode="r+", shape=d["shape"])
             self.memmaps[(begin, end)] = data[:new_size].reshape(-1, chunk_size)
             begin = end
 
@@ -333,14 +321,12 @@ class MemoryMapped1DDataset(Dataset):
                 fp[:] = chunk
                 fp.flush()
                 print(f"Saved chunk to file: data-{idx:03}.memmap")
-                metadata.append(
-                    {
-                        "dtype": dtype,
-                        "shape": (len(chunk),),
-                        "size": len(chunk),
-                        "filename": f"data-{idx:03}.memmap",
-                    }
-                )
+                metadata.append({
+                    "dtype": dtype,
+                    "shape": (len(chunk),),
+                    "size": len(chunk),
+                    "filename": f"data-{idx:03}.memmap",
+                })
                 idx += 1
                 chunk[: len(batch_arr_2)] = batch_arr_2
                 curr_size = len(batch_arr_2)
@@ -363,14 +349,12 @@ class MemoryMapped1DDataset(Dataset):
         fp[:] = chunk
         fp.flush()
         print(f"Saved chunk to file: data-{idx:03}.memmap")
-        metadata.append(
-            {
-                "dtype": dtype,
-                "shape": (len(chunk),),
-                "size": len(chunk),
-                "filename": Path(root) / f"data-{idx:03}.memmap",
-            }
-        )
+        metadata.append({
+            "dtype": dtype,
+            "shape": (len(chunk),),
+            "size": len(chunk),
+            "filename": Path(root) / f"data-{idx:03}.memmap",
+        })
 
         torch.save(metadata, Path(root) / "metadata.pt")
         metadata = [{k: str(v) for k, v in d.items()} for d in metadata]
@@ -410,13 +394,10 @@ class ImageClassificationDataset(Dataset):
         assert Path(root).is_dir(), f"Path {root} is not a directory"
         self.list_of_chunks = list(Path(root).glob("chunk*.pt"))
         self._len = sum([len(torch.load(chunk)) for chunk in self.list_of_chunks])
-        self.list_of_start_end_indices = [
-            tuple(chunk.stem.split("-")[1:]) for chunk in self.list_of_chunks
-        ]
+        self.list_of_start_end_indices = [tuple(chunk.stem.split("-")[1:]) for chunk in self.list_of_chunks]
         # separate the names of the chunks into a list of tuples (start, end)
         self.mapping = {
-            idx: chunk
-            for idx, chunk in zip(self.list_of_start_end_indices, self.list_of_chunks, strict=False)
+            idx: chunk for idx, chunk in zip(self.list_of_start_end_indices, self.list_of_chunks, strict=False)
         }
         self.transform = transform
         self.target_transform = target_transform
@@ -491,7 +472,9 @@ def img2base64_str(file_name: str) -> str:
 
 def preprocess_text(text: str) -> list[str]:
     gpt2_pattern = r"""'s|'t|'re|'ve|'m|'ll|'d| ?[\p{L}]+| ?[\p{N}]+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-    gpt4_pattern = r"'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"
+    gpt4_pattern = (
+        r"'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"
+    )
     compiled_pattern = regex.compile(gpt4_pattern)
     # split the text up into text ch
     text_chunks = regex.findall(compiled_pattern, text)

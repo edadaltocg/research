@@ -1,8 +1,16 @@
 import torch
 from torch import Tensor, nn
 
+nn.LayerNorm()
+
 
 class LayerNorm(nn.Module):
+    """
+    $$
+    y = \frac{x - \\mathrm{E}[x]}{ \\sqrt{\\mathrm{Var}[x] + \\epsilon}} * \\gamma + \beta
+    $$
+    """
+
     def __init__(
         self,
         normalized_shape: int | tuple,
