@@ -1,0 +1,30 @@
+trainer:
+  num_epochs: 100
+  batch_size: 128
+  init_weights: default
+  log_interval: 10
+  eval_interval: 10
+  save_interval: 10
+  drop_last: true
+
+optimizer:
+  cls: Adam
+  lr: 0.00003
+
+scheduler:
+  cls: StepLR
+  step_size: 1
+  gamma: 0.99
+
+criterion:
+  cls: CrossEntropyLoss
+
+model: # tiny vit
+  patch_size: 4
+  in_channels: 3
+  num_layers: 12
+  num_heads: 3
+  hidden_dim: 192
+  mlp_dim: 768
+  dropout_p: 0.1
+  attn_dropout_p: 0.1

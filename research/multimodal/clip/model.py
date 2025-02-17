@@ -4,9 +4,7 @@ from torch import Tensor, nn
 
 
 class ProjectionHead(nn.Module):
-    def __init__(
-        self, in_dim: int, out_dim: int, inner_dim: int, dropout_p: float
-    ) -> None:
+    def __init__(self, in_dim: int, out_dim: int, inner_dim: int, dropout_p: float) -> None:
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -44,9 +42,7 @@ class CLIP(nn.Module):
         self.vision_encoder_hidden_dim = vision_encoder_hidden_dim
         self.text_encoder_hidden_dim = text_encoder_hidden_dim
 
-        self.vision_proj = nn.Linear(
-            vision_encoder_hidden_dim, hidden_dim, bias=proj_bias
-        )
+        self.vision_proj = nn.Linear(vision_encoder_hidden_dim, hidden_dim, bias=proj_bias)
         self.text_proj = nn.Linear(text_encoder_hidden_dim, hidden_dim, bias=proj_bias)
         self.temperature = nn.Parameter(torch.tensor(1.0))
 
