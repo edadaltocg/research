@@ -3,7 +3,7 @@ default:
 
 # Initialize virtual environment and synchronize dependencies
 install:
-    uv sync --all-extras
+    uv sync --frozen --all-extras
 
 # Format and fix code
 fmt:

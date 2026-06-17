@@ -69,6 +69,10 @@ testpaths = ["tests"]
 [tool.coverage.report]
 skip_empty = true
 
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
 [tool.uv.workspace]
 members = ["projects/*"]
 
