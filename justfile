@@ -22,8 +22,10 @@ test:
 
 # Preview documentation locally
 docs-preview:
-    uv run mkdocs serve
+    uv run scripts/gen_ref_pages.py
+    uv run properdocs serve
 
 # Build static documentation files
 docs-build:
-    uv run mkdocs build
+    uv run scripts/gen_ref_pages.py
+    uv run properdocs build

@@ -1,12 +1,26 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
-  ],
+  "prConcurrentLimit": 5,
+  "rangeStrategy": "widen",
   "semanticCommits": "enabled",
-  "dependencyDashboard": true,
-  "timezone": "UTC",
+  "commitMessagePrefix": null,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["every weekend"]
+  },
+  "labels": ["renovate"],
   "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true
+    },
+    {
+      "matchPackageNames": [
+        "python"
+      ],
+      "enabled": false
+    },
     {
       "matchPackageNames": ["torch", "torchvision", "torchaudio"],
       "groupName": "pytorch"
