@@ -1,9 +1,11 @@
 import torch
 import torch.nn.functional as F
+
 from research.nn.activations.softmax import log_softmax_math
+from research.nn.losses.ce import nll
+from research.nn.losses.mse import matrix_mse_loss
 from research.nn.losses.mse import mse_loss as mse_loss_
-from research.nn.losses.ce import ce, nll
-from research.nn.losses.mse import matrix_mse_loss, mat_se
+
 from ..testdata import dummy
 
 

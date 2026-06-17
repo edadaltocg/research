@@ -1,16 +1,15 @@
-from collections import defaultdict
-import os
-from typing import Any
-import yaml
+import time
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-import time
+from typing import Any
 
 import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler
 import torch.utils.data
+import yaml
 from torch.utils.data import DataLoader, Subset
 
 from research.trainer.logger import TrainerLogger

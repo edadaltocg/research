@@ -1,0 +1,38 @@
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = [
+  "YTT",  # flake8-2020
+  "S",    # flake8-bandit
+  "B",    # flake8-bugbear
+  "A",    # flake8-builtins
+  "C4",   # flake8-comprehensions
+  "T10",  # flake8-debugger
+  "SIM",  # flake8-simplify
+  "I",    # isort
+  "C90",  # mccabe
+  "E",    # pycodestyle
+  "W",    # pycodestyle
+  "F",    # pyflakes
+  "PGH",  # pygrep-hooks
+  "UP",   # pyupgrade
+  "RUF",  # ruff
+  "TRY",  # tryceratops
+]
+
+ignore = [
+  "E501",  # Line too long (AI research code frequently has long inline layers/tensors/configs/URLs)
+  "E731",  # Do not assign lambda expression (lambdas are common/clean in data pipelines/transforms)
+  "E741",  # Ambiguous variable name (capital X, Y, H, W, etc. are standard mathematical notation)
+  "B904",  # Within an except clause, raise exceptions with raise ... from err
+  "S101",  # Assert statements are standard for checking tensor shapes and types in deep learning research
+  "TRY003", # Long exception messages are common and helpful in research scripts
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["S101"]  # S101: assert statements are required for tests
+
+[format]
+quote-style = "double"
+preview = true

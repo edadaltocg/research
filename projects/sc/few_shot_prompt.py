@@ -1,4 +1,3 @@
-import sys
 import logging
 import random
 
@@ -44,7 +43,7 @@ def gsm8k(cfg: DictConfig):
         )
     ]
     before = cfg.get("before", False)
-    for q, a in zip(qs, ans):
+    for q, a in zip(qs, ans, strict=False):
         aa = a.split("\n#### ")
         if before:
             str_a = "The answer is: " + aa[1].strip() + ".\n" + aa[0].strip()

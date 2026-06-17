@@ -1,7 +1,6 @@
 import torch
-from torch import Tensor, nn
 import torch.nn.functional as F
-
+from torch import Tensor, nn
 
 # 2D
 
@@ -197,7 +196,7 @@ class UNet2D(nn.Module):
 
         x = self.bridge(x)
 
-        for dec, encoder_feature in zip(self.decoders, encoders_features):
+        for dec, encoder_feature in zip(self.decoders, encoders_features, strict=False):
             x = dec(encoder_feature, x)
 
         x = self.head(encoders_features[-1], x)
@@ -413,7 +412,7 @@ class UNet3D(nn.Module):
 
         x = self.bridge(x)
 
-        for dec, encoder_feature in zip(self.decoders, encoders_features):
+        for dec, encoder_feature in zip(self.decoders, encoders_features, strict=False):
             x = dec(encoder_feature, x)
 
         x = self.head(encoders_features[-1], x)

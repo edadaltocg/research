@@ -4,9 +4,8 @@ import timm
 import timm.models
 import torch
 import torch.nn as nn
-from timm.models import register_model as timm_register_model
-
 from detectors.models.utils import ModelDefaultConfig, hf_hub_url_template
+from timm.models import register_model as timm_register_model
 
 
 def _cfg(url, architecture: str, **kwargs):

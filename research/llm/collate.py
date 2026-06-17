@@ -1,13 +1,9 @@
-from typing import Dict, List, Optional, Union
-
 import torch
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 
 
-def get_causal_mask_from_padding_mask(
-    padding_mask: torch.Tensor, target_seq_len: Optional[int] = None
-) -> torch.Tensor:
+def get_causal_mask_from_padding_mask(padding_mask: torch.Tensor, target_seq_len: int | None = None) -> torch.Tensor:
     """
     Converts a padding mask of shape ``[bsz, seq_len]`` to a ``[bsz, seq_len, seq_len]`` causal attention mask suitable for
     consumption by :func:`~torch.nn.functional.scaled_dot_product_attention`. If ``target_seq_len``
@@ -41,9 +37,7 @@ def get_causal_mask_from_padding_mask(
     target_seq_len = seq_len if target_seq_len is None else target_seq_len
 
     if target_seq_len < seq_len:
-        raise AssertionError(
-            "target_seq_len cannot be shorter than the sequence length of the padding mask."
-        )
+        raise AssertionError("target_seq_len cannot be shorter than the sequence length of the padding mask.")
 
     mask = torch.tril(
         torch.ones(seq_len, target_seq_len, device=padding_mask.device, dtype=bool),
@@ -77,7 +71,7 @@ def get_position_ids_from_padding_mask(
 
 
 def left_pad_sequence(
-    sequences: List[torch.Tensor],
+    sequences: list[torch.Tensor],
     batch_first: bool = False,
     padding_value: float = 0,
 ) -> torch.Tensor:
@@ -120,7 +114,7 @@ def left_pad_sequence(
 def collate_self_consistency(
     batch,
     n_paths: int,
-) -> Dict[str, Union[Tensor, str]]:
+) -> dict[str, Tensor | str]:
     collated = {}
     for k, v in batch[0].items():
         if isinstance(v, Tensor):
@@ -130,7 +124,7 @@ def collate_self_consistency(
     return collated
 
 
-def create_block_causal_mask(seq_lens: List[torch.Tensor]) -> torch.Tensor:
+def create_block_causal_mask(seq_lens: list[torch.Tensor]) -> torch.Tensor:
     """
     Given a batch tensor of seq lens defining the lengths of samples in each pack,
     Construct a 2D block causal mask for each pack in the batch. For example, if
@@ -166,7 +160,7 @@ def create_block_causal_mask(seq_lens: List[torch.Tensor]) -> torch.Tensor:
     return torch.stack(batch_block_attn_masks)
 
 
-def padded_collate_packed(batch) -> Dict[str, torch.Tensor]:
+def padded_collate_packed(batch) -> dict[str, torch.Tensor]:
     """Collate packed sequences into a batch. Only convert the seq lens into
     a block mask for use with attention. Tokens, labels, and input_pos are
     already padded to the same length within :class:`~torchtune.datasets.PackedDataset`.

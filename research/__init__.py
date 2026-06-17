@@ -1,7 +1,7 @@
-from . import logger, config, utils
+from . import config, logger, utils
 
 __all__ = [
-    "logger",
     "config",
+    "logger",
     "utils",
 ]

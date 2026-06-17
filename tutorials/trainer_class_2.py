@@ -3,11 +3,12 @@ import math
 import os
 import random
 import time
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Literal, Optional, TypeVar
+from typing import Literal, TypeVar
 
 import numpy as np
 import torch
@@ -17,14 +18,16 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.optim.lr_scheduler
 import torch.utils.data
+from datasetsutils.common import build_pre_train_dataset
+from llama2.model import CalmLlama2HF, llama_1b_config, prepare_calm_llama
 from numpy._typing import _UnknownType
 from torch.distributed.fsdp import (
+    BackwardPrefetch,
     FullOptimStateDictConfig,
     FullStateDictConfig,
     MixedPrecision,
     ShardingStrategy,
     StateDictType,
-    BackwardPrefetch,
 )
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
@@ -40,9 +43,6 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import LlamaForCausalLM
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
-from datasetsutils.common import build_pre_train_dataset
-
-from llama2.model import CalmLlama2HF, llama_1b_config, prepare_calm_llama
 
 # from llama2.model import prepare_calm_llama
 
@@ -80,12 +80,12 @@ class Trainer:
     model: nn.Module
     train_forward: Callable
     train_dataset: Dataset | IterableDataset
-    eval_dataset: Optional[Dataset | IterableDataset] = None
-    eval_forward: Optional[Callable] = None
-    grad_norm: Optional[float] = 1.0
+    eval_dataset: Dataset | IterableDataset | None = None
+    eval_forward: Callable | None = None
+    grad_norm: float | None = 1.0
 
     fsdp: bool = True
-    auto_wrap_policy: Optional[_UnknownType] = None
+    auto_wrap_policy: _UnknownType | None = None
     optimizer_name: str = "AdamW"
     minimum_lr: float = 3e-5
     peak_lr: float = 3e-4
@@ -119,9 +119,7 @@ class Trainer:
     buffer_dtype: Literal["float16", "bfloat16", "float32"] = "float32"
 
     compile: bool = True
-    compiler_mode: Literal[
-        "default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"
-    ] = "default"
+    compiler_mode: Literal["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"] = "default"
     compiler_fullgraph: bool = False
     compiler_backend: str = "inductor"
 
@@ -180,9 +178,7 @@ class Trainer:
         else:
             self.checkpoint_freq = math.inf
         self.eval_freq = max(self.num_steps // self.num_evals, 1)
-        self.gradient_accumulation_steps = max(
-            1, self.desired_batch_size // self.device_train_batch_size
-        )
+        self.gradient_accumulation_steps = max(1, self.desired_batch_size // self.device_train_batch_size)
 
         self.train_dataloader = self.setup_train_dataloader()
         self.train_iter = iter(self.train_dataloader)
@@ -200,7 +196,7 @@ class Trainer:
             range(self.start_step, self.num_steps + 1),
             dynamic_ncols=True,
             position=self.RANK,
-            desc=f"Train [{self.RANK+1}/{self.WORLD_SIZE}]",
+            desc=f"Train [{self.RANK + 1}/{self.WORLD_SIZE}]",
             leave=True,
         )
 
@@ -214,9 +210,7 @@ class Trainer:
     def setup_distrib(self):
         log.info("Setting up distributed training")
         try:
-            dist.init_process_group(
-                backend=self.distrib_backend, init_method=self.distrib_init_method
-            )
+            dist.init_process_group(backend=self.distrib_backend, init_method=self.distrib_init_method)
             self.RANK = dist.get_rank()
             self.WORLD_SIZE = dist.get_world_size()
             self.device = torch.device(f"cuda:{self.RANK}")
@@ -299,12 +293,8 @@ class Trainer:
 
     def setup_model(self):
         log.info("Setting up model")
-        non_trainable_params = sum(
-            p.numel() for p in self.model.parameters() if not p.requires_grad
-        )
-        trainable_params = sum(
-            p.numel() for p in self.model.parameters() if p.requires_grad
-        )
+        non_trainable_params = sum(p.numel() for p in self.model.parameters() if not p.requires_grad)
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
 
         log.info(f"Num trainable params: {trainable_params:,}")
         log.info(f"Num non trainable params: {non_trainable_params:,}")
@@ -330,9 +320,7 @@ class Trainer:
                 self.model = DDP(self.model, device_ids=[self.RANK])
         else:
             log.info(f"Setting up model on single device, {self.device=}")
-            self.model = self.model.to(
-                self.device, dtype=self.dtype_converter(self.param_dtype)
-            )
+            self.model = self.model.to(self.device, dtype=self.dtype_converter(self.param_dtype))
 
         return self.model
 
@@ -354,13 +342,9 @@ class Trainer:
             total_iters=self.warmup_steps,
         )
 
-        cosine_decay = optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, self.num_steps - self.warmup_steps
-        )
+        cosine_decay = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, self.num_steps - self.warmup_steps)
         schedulers = [linear_warmup, cosine_decay]
-        scheduler = optim.lr_scheduler.SequentialLR(
-            self.optimizer, schedulers, milestones=[self.warmup_steps]
-        )
+        scheduler = optim.lr_scheduler.SequentialLR(self.optimizer, schedulers, milestones=[self.warmup_steps])
         return scheduler
 
     def compile_model(self):
@@ -394,9 +378,7 @@ class Trainer:
     def log_train(self):
         for k, v in self.train_outputs.items():
             if k not in self.train_history:
-                self.train_history[k] = torch.zeros(
-                    (self.num_steps + 1,), device=self.device
-                )
+                self.train_history[k] = torch.zeros((self.num_steps + 1,), device=self.device)
             self.train_history[k][self.step] = v
         if self.RANK <= 1:
             self.train_latest_history = {}
@@ -409,18 +391,14 @@ class Trainer:
             if self.RANK == 0:
                 self.writer.add_scalar("lr", curr_lr, self.step)
 
-            self.pbar.set_postfix(
-                **self.train_latest_history, **self.eval_latest_history, lr=curr_lr
-            )
+            self.pbar.set_postfix(**self.train_latest_history, **self.eval_latest_history, lr=curr_lr)
 
     def log_eval(self):
         if self.eval_dataset is None or self.eval_forward is None:
             return
         for k, v in self.eval_outputs.items():
             if k not in self.eval_history:
-                self.eval_history[k] = torch.zeros(
-                    (self.num_steps + 1,), device=self.device
-                )
+                self.eval_history[k] = torch.zeros((self.num_steps + 1,), device=self.device)
             self.eval_history[k][self.step] = v
         if self.RANK <= 1:
             self.eval_latest_history = {}
@@ -564,9 +542,7 @@ class Trainer:
     def setup_profiler(self):
         if self.profile:
             profiling_schedule = schedule(wait=1, warmup=5, active=3, repeat=1)
-            on_trace_ready = torch.profiler.tensorboard_trace_handler(
-                str(self.dest_root / "trace")
-            )
+            on_trace_ready = torch.profiler.tensorboard_trace_handler(str(self.dest_root / "trace"))
             activities = [ProfilerActivity.CPU]
             if self.WORLD_SIZE >= 1:
                 activities.append(ProfilerActivity.CUDA)
@@ -740,9 +716,7 @@ def test_trainer(
         y = my_trainer.model(input_ids, labels=True)
         logits_final = y[0].logits
         extra_logits = y[1]
-        extra_preds = [
-            logits.argmax(-1).cpu().numpy().tolist() for logits in extra_logits
-        ]
+        extra_preds = [logits.argmax(-1).cpu().numpy().tolist() for logits in extra_logits]
     print(f"{elem=}")
     pred_final = logits_final.argmax(-1).cpu().numpy().tolist()
     print(f"{pred_final=}")
@@ -804,9 +778,7 @@ def calm_trainer(
     }
     head_type = experiment_idx_to_head_type[experiment_idx]
 
-    model, tokenizer = prepare_calm_llama(
-        num_layers=num_calm_layers, head_type=head_type
-    )
+    model, tokenizer = prepare_calm_llama(num_layers=num_calm_layers, head_type=head_type)
     auto_wrap_policy = partial(
         transformer_auto_wrap_policy,
         transformer_layer_cls={
@@ -815,13 +787,11 @@ def calm_trainer(
     )
     train_forward = train_forward_example
     eval_forward = eval_forward_example
-    dataset = build_pre_train_dataset(
-        {
-            ("c4", "train[:10%]"): 0.6,
-            ("wikipedia", "train[:100%]"): 0.1,
-            ("the_stack", "train[:1%]"): 0.3,
-        }
-    )  # 4B tokens
+    dataset = build_pre_train_dataset({
+        ("c4", "train[:10%]"): 0.6,
+        ("wikipedia", "train[:100%]"): 0.1,
+        ("the_stack", "train[:1%]"): 0.3,
+    })  # 4B tokens
 
     split_idx = int(0.8 * len(dataset))
     train_dataset = torch.utils.data.Subset(dataset, range(0, split_idx))
@@ -870,9 +840,7 @@ if __name__ == "__main__":
     """
     import fire
 
-    fire.Fire(
-        {
-            "test": test_trainer,
-            "calm": calm_trainer,
-        }
-    )
+    fire.Fire({
+        "test": test_trainer,
+        "calm": calm_trainer,
+    })

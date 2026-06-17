@@ -22,16 +22,12 @@ class Tokenizer:
         self.unk_token = "<unk>"
         self.pad_token = "<pad>"
 
-    def encode(
-        self, string: str | list[str], bos: bool = True, eos: bool = False, max_len=None
-    ) -> torch.Tensor:
+    def encode(self, string: str | list[str], bos: bool = True, eos: bool = False, max_len=None) -> torch.Tensor:
         if isinstance(string, str):
             return self.batch_encode([string], bos=bos, eos=eos, max_len=max_len)[0]
         return self.batch_encode(string, bos=bos, eos=eos, max_len=max_len)
 
-    def batch_encode(
-        self, strings: list[str], bos=True, eos=False, max_len=None
-    ) -> torch.Tensor:
+    def batch_encode(self, strings: list[str], bos=True, eos=False, max_len=None) -> torch.Tensor:
         tokens = self._model.encode(strings, out_type=int)  # type: ignore
         if bos:
             tokens = [[self.bos_id] + t for t in tokens]
@@ -77,9 +73,7 @@ class Tokenizer:
         return tokens
 
 
-def train_sp_tokenizer_from_iterator(
-    iterator, dest_path="output/tokenizers", prefix="sp", vocab_size=32768
-):
+def train_sp_tokenizer_from_iterator(iterator, dest_path="output/tokenizers", prefix="sp", vocab_size=32768):
     path = os.path.join(dest_path, f"{prefix}")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     ascii_chars = [c for c in string.printable]

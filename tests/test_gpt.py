@@ -31,11 +31,7 @@ def convert_gpt2_state_dict(state_dict: OrderedDict) -> OrderedDict:
         # E               size mismatch for encoder.layers.11.attn.qkv_proj.weight: copying a param with shape torch.Size([768, 2304]) from checkpoint, the shape in current model is torch.Size([2304, 768]).
         # E               size mismatch for encoder.layers.11.mlp.linear1.weight: copying a param with shape torch.Size([768, 3072]) from checkpoint, the shape in current model is torch.Size([3072, 768]).
         # E               size mismatch for encoder.layers.11.mlp.linear2.weight: copying a param with shape torch.Size([3072, 768]) from checkpoint, the shape in current model is torch.Size([768, 3072]).
-        if (
-            "attn.qkv_proj" in new_key
-            or "mlp.linear1" in new_key
-            or "mlp.linear2" in new_key
-        ):
+        if "attn.qkv_proj" in new_key or "mlp.linear1" in new_key or "mlp.linear2" in new_key:
             v = v.t()
         new_state_dict[new_key] = v
     return new_state_dict
@@ -60,9 +56,7 @@ def test_gpt():
     logits = output.logits
 
     # load gpt
-    gpt = GPT(
-        vocab_size=50257, embed_dim=768, max_seq_len=1024, num_heads=12, num_layers=12
-    )
+    gpt = GPT(vocab_size=50257, embed_dim=768, max_seq_len=1024, num_heads=12, num_layers=12)
     print(gpt)
     pretrained_w = model.state_dict()
     new_w = convert_gpt2_state_dict(pretrained_w)

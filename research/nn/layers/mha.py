@@ -1,6 +1,6 @@
 import math
-from typing import Callable
-import torch
+from collections.abc import Callable
+
 import torch.nn.functional as F
 from torch import Tensor, nn
 

@@ -1,11 +1,11 @@
-import matplotlib.pyplot as plt
-
-from albumentations.pytorch import ToTensorV2
 import copy
 
 import albumentations as A
-import numpy as np
 import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+from albumentations.pytorch import ToTensorV2
+from PIL import Image
 
 
 def dummy_image(w, h):

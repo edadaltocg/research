@@ -1,6 +1,4 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 batch_size, dim, n_classes = 128, 16, 3
 

@@ -3,7 +3,7 @@ name = "research"
 version = "0.1.0"
 description = "Ed's from-zero research monorepo. For AI learning purposes."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { file = "LICENSE" }
 dependencies = [
   "datasets",
@@ -18,12 +18,7 @@ dependencies = [
   "pydantic",
   "torchinfo>=1.8.0",
 ]
-
-[tool.setuptools]
-py-modules = ["research"]
-
 [project.optional-dependencies]
-dev = ["ruff", "pytest", "pytest-cov", "pytest-xdist", "mypy"]
 docs = [
   "mkdocs-material>=9.5.47",
   "mkdocs>=1.6.0",
@@ -42,64 +37,30 @@ trainer = [
     "torch-tb-profiler>=0.4.3",
 ]
 
+[dependency-groups]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "pytest-xdist",
+  "ruff",
+  "mypy",
+  "pysnooper",
+  "research[docs,vision,trainer]",
+]
+
 [build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv-build"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "research"
+module-root = ""
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-[tool.ruff]
-target-version = "py311"
-line-length = 120
-fix = true
-
-[tool.ruff.lint]
-select = [
-  # flake8-2020
-  "YTT",
-  # flake8-bandit
-  "S",
-  # flake8-bugbear
-  "B",
-  # flake8-builtins
-  "A",
-  # flake8-comprehensions
-  "C4",
-  # flake8-debugger
-  "T10",
-  # flake8-simplify
-  "SIM",
-  # isort
-  "I",
-  # mccabe
-  "C90",
-  # pycodestyle
-  "E",
-  "W",
-  # pyflakes
-  "F",
-  # pygrep-hooks
-  "PGH",
-  # pyupgrade
-  "UP",
-  # ruff
-  "RUF",
-  # tryceratops
-  "TRY",
-]
-ignore = [
-  # LineTooLong
-  "E501",
-  # DoNotAssignLambda
-  "E731",
-]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]
-
-[tool.ruff.format]
-preview = true
-
 [tool.coverage.report]
 skip_empty = true
+
+[tool.uv.workspace]
+members = ["projects/*"]

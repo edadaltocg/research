@@ -9,7 +9,6 @@ from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import timedelta
-from itertools import repeat
 from pathlib import Path
 from typing import (
     Any,
@@ -42,7 +41,6 @@ from torch.utils.data import DataLoader, Dataset, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
 from torcheval.metrics import Max, Mean, Throughput
 from torcheval.metrics.toolkit import sync_and_compute
-
 
 T = TypeVar("T")
 

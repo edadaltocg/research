@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
@@ -51,16 +50,12 @@ class Sampler(nn.Module):
         probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
         probs = torch.gather(probs_sort, dim=-1, index=torch.argsort(probs_idx, dim=-1))
 
-        next_token_ids = torch.multinomial(
-            probs, num_samples=1, replacement=True
-        ).squeeze(dim=-1)
+        next_token_ids = torch.multinomial(probs, num_samples=1, replacement=True).squeeze(dim=-1)
         return next_token_ids
 
 
 @torch.no_grad()
-def generate_naive(
-    model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None
-):
+def generate_naive(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None):
     """
     Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
     the sequence max_new_tokens times, feeding the predictions back into the model each time.
@@ -68,9 +63,7 @@ def generate_naive(
     model.eval()
     for _ in range(max_new_tokens):
         # if the sequence context is growing too long we must crop it at block_size
-        idx_cond = (
-            idx if idx.size(1) <= model.block_size else idx[:, -model.block_size :]
-        )
+        idx_cond = idx if idx.size(1) <= model.block_size else idx[:, -model.block_size :]
         # forward the model to get the logits for the index in the sequence
         logits, _ = model(idx_cond)
         # pluck the logits at the final step and scale by desired temperature
@@ -123,9 +116,7 @@ def sample(logits, temperature: float = 1.0, top_k: int | None = None):
     return idx_next, probs
 
 
-def prefill(
-    model, x: torch.Tensor, input_pos: torch.Tensor, **sampling_kwargs
-) -> Tensor:
+def prefill(model, x: torch.Tensor, input_pos: torch.Tensor, **sampling_kwargs) -> Tensor:
     # input_pos: [B, S]
     logits = model(x, input_pos)
     return sample(logits, **sampling_kwargs)[0]
@@ -134,9 +125,7 @@ def prefill(
 def decode_n_tokens(model, max_new_tokens, input_toks, temperature=1.0, top_k=None):
     """Decode max_new_tokens tokens autoregressively (sequentially) from the model."""
     b, t = input_toks.size()
-    output_tokens = torch.zeros(
-        b, t + max_new_tokens, dtype=torch.int, device=input_toks.device
-    )
+    output_tokens = torch.zeros(b, t + max_new_tokens, dtype=torch.int, device=input_toks.device)
     for _ in range(max_new_tokens):
         logits, _ = model(input_toks)
         idx_next, _ = sample(logits, temperature, top_k)
@@ -151,9 +140,7 @@ def beam_search():
 def generate(model, tokenizer, prompt, max_new_tokens, temperature=1.0, top_k=None):
     device = next(model.parameters()).device
     tokenized_prompt = encode_tokens(tokenizer, prompt, bos=True, device=device)
-    generated_tokens = torch.zeros(
-        1, tokenized_prompt.size(1) + max_new_tokens, dtype=torch.int, device=device
-    )
+    generated_tokens = torch.zeros(1, tokenized_prompt.size(1) + max_new_tokens, dtype=torch.int, device=device)
     # prefill the model with the prompt
     input_pos = torch.arange(tokenized_prompt.size(1), device=device)
     outputs = model(tokenized_prompt, input_pos)

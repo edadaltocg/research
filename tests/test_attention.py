@@ -60,14 +60,10 @@ def test_scaled_dot_product_attention():
     )
 
     scale = embed_dimension**-0.5
-    y1 = F.scaled_dot_product_attention(
-        query, key, value, is_causal=False, dropout_p=0.0, scale=scale
-    )
+    y1 = F.scaled_dot_product_attention(query, key, value, is_causal=False, dropout_p=0.0, scale=scale)
     assert y1.shape == (batch_size, num_heads, max_sequence_len, embed_dimension)
 
-    y2 = scaled_dot_product_attention(
-        query, key, value, is_causal=False, dropout_p=0.0, scale=scale
-    )
+    y2 = scaled_dot_product_attention(query, key, value, is_causal=False, dropout_p=0.0, scale=scale)
     assert y2.shape == (batch_size, num_heads, max_sequence_len, embed_dimension)
 
     assert torch.allclose(y1, y2, atol=1e-4), (y1 - y2).abs().max()
@@ -91,9 +87,7 @@ def test_scaled_dot_product_attention():
                     "μs",
                 )
 
-    y1 = F.scaled_dot_product_attention(
-        query, key, value, is_causal=True, dropout_p=0.0
-    )
+    y1 = F.scaled_dot_product_attention(query, key, value, is_causal=True, dropout_p=0.0)
     y2 = scaled_dot_product_attention(query, key, value, is_causal=True, dropout_p=0.0)
     assert torch.allclose(y1, y2, atol=1e-4)
 
@@ -106,9 +100,7 @@ def test_group_query_attention_with_rope_and_kv_cache():
     num_kv_heads = 1
     batch_size = 1
     max_seq_len = 24
-    kv_cache = KVCache(
-        batch_size, max_seq_len, num_kv_heads, head_dim, dtype=torch.float32
-    )
+    kv_cache = KVCache(batch_size, max_seq_len, num_kv_heads, head_dim, dtype=torch.float32)
 
     layer = GroupedQueryAttentionWithRoPEAndCache(
         embed_dim=embed_dim,

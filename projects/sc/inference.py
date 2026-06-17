@@ -1,5 +1,4 @@
 import os
-from typing import Tuple
 
 import torch
 import torch.nn.functional as F
@@ -26,7 +25,7 @@ def forward(
     encoder_input=None,
     encoder_mask=None,
     input_pos=None,
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """
     Args:
         tokens (torch.Tensor): input tensor with shape ``[b x s]``
@@ -162,9 +161,7 @@ def main():
 
     # Initializing the tokenizer
     logger.info("Initializing the tokenizer.")
-    tokenizer = torchtune.models.llama3.llama3_tokenizer(
-        os.path.join(base_path, "original", "tokenizer.model")
-    )
+    tokenizer = torchtune.models.llama3.llama3_tokenizer(os.path.join(base_path, "original", "tokenizer.model"))
 
     # Encode the prompt
     prompt_text = "Hi my name is"
@@ -210,9 +207,7 @@ def main():
     logger.info(f"{F.softmax(new_logits, dim=-1)=}")
     logger.info(f"{o1=}")
     logger.info(f"{z=}")
-    ppl = torcheval.metrics.functional.perplexity(
-        logits[:, -1].unsqueeze(0), argmax_seq[:, -1].unsqueeze(0)
-    )
+    ppl = torcheval.metrics.functional.perplexity(logits[:, -1].unsqueeze(0), argmax_seq[:, -1].unsqueeze(0))
     logger.info(f"{ppl=}")
 
     return

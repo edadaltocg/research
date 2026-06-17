@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 from torch import Tensor
 
@@ -31,8 +29,8 @@ def sample(
     logits: Tensor,
     *,
     temperature: float = 1.0,
-    top_k: Optional[int] = None,
-    top_p: Optional[float] = None,
+    top_k: int | None = None,
+    top_p: float | None = None,
 ) -> torch.Tensor:
     # scale the logits based on temperature
     logits = logits / max(temperature, 1e-5)

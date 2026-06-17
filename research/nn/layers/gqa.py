@@ -1,5 +1,5 @@
-import path
-from typing import Callable
+from collections.abc import Callable
+
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn

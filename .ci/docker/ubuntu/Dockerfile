@@ -24,17 +24,17 @@ RUN bash ./install_gcc.sh && rm install_gcc.sh
 COPY ./common/install_user.sh install_user.sh
 RUN bash ./install_user.sh && rm install_user.sh
 
-# Install conda and other dependencies
-ARG MINICONDA_VERSION
+# Install uv and other dependencies
 ARG PYTHON_VERSION
 ENV PYTHON_VERSION=$PYTHON_VERSION
-ENV PATH /opt/conda/envs/py_$PYTHON_VERSION/bin:/opt/conda/bin:$PATH
-COPY dev-requirements.txt /opt/conda/
-COPY requirements.txt /opt/conda/
-COPY conda-env-ci.txt /opt/conda/
-COPY ./common/install_conda.sh install_conda.sh
 COPY ./common/utils.sh utils.sh
-RUN bash ./install_conda.sh && rm install_conda.sh utils.sh /opt/conda/dev-requirements.txt /opt/conda/requirements.txt /opt/conda/conda-env-ci.txt
+ADD https://astral.sh/uv/install.sh /install.sh
+RUN chmod +x /install.sh && /install.sh --bin-dir /usr/local/bin && rm /install.sh
+
+# Install Python using uv
+RUN uv python install ${PYTHON_VERSION}
+
+RUN rm -f utils.sh
 
 USER ci-user
 CMD ["bash"]

@@ -11,16 +11,11 @@ def test_sp_tokenizer():
         text = f.read()
     # chunk text
     chunk_size = 1000
-    chunks = [
-        " ".join(preprocess_text(text[i : i + chunk_size]))
-        for i in range(0, len(text), chunk_size)
-    ]
+    chunks = [" ".join(preprocess_text(text[i : i + chunk_size])) for i in range(0, len(text), chunk_size)]
     iterator = iter(chunks)
 
     # train
-    tokenizer = train_sp_tokenizer_from_iterator(
-        iterator, prefix="test_sp", vocab_size=150
-    )
+    tokenizer = train_sp_tokenizer_from_iterator(iterator, prefix="test_sp", vocab_size=150)
     tokenizer = Tokenizer("output/tokenizers/test_sp.model")
 
     # text encode/decode

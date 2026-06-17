@@ -21,9 +21,7 @@ def test_vanilla_positional_encoding():
     plt.ylabel("Sequence Position")
     plt.colorbar()
     plt.tight_layout()
-    dest = Path(
-        os.path.join("output", "tests", "plots", "vanilla_positional_encoding.png")
-    )
+    dest = Path(os.path.join("output", "tests", "plots", "vanilla_positional_encoding.png"))
     dest.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(dest, bbox_inches="tight", pad_inches=0)
     plt.close(fig)

@@ -59,9 +59,7 @@ def speculative_decoding(
 
         # verify with larger network
 
-        logits, cache = net(
-            out, seq_start_pos=out.shape[-1] - seq_lens, cache=cache, return_cache=True
-        )
+        logits, cache = net(out, seq_start_pos=out.shape[-1] - seq_lens, cache=cache, return_cache=True)
 
         logits = logits[..., -(gamma + 1) :, :]
         logits = top_k(logits, thres=filter_thres)
@@ -110,9 +108,7 @@ def speculative_decoding(
             out = out[batch_range, seq_offset_indices]
 
             cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value=pad_id) for t in cache)
-            small_cache = tuple(
-                F.pad(t, (0, 0, 0, max_num_rejected), value=pad_id) for t in small_cache
-            )
+            small_cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value=pad_id) for t in small_cache)
 
             cache = tuple(rearrange(t, "b ... n d -> b n ... d") for t in cache)
             small_cache = tuple(rearrange(t, "b ... n d -> b n ... d") for t in small_cache)

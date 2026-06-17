@@ -45,9 +45,7 @@ def get_text_pretrain_partial_dataset(
     split: str = "train[:1%]",
     key: str = "text",
 ) -> Dataset:
-    return TextPretrainPartialDataset(
-        root=Path(root) / dataset_name, split=split, key=key
-    )
+    return TextPretrainPartialDataset(root=Path(root) / dataset_name, split=split, key=key)
 
 
 def get_text_pretrain_dataset(root=ROOT):
@@ -165,15 +163,10 @@ def build_pre_train_dataset(
     for dataset_name, split in dataset_names_splits_and_proportions:
         path = Path(root) / dataset_name / tokenizer_name / f"{split}_tokenized"
         filelist = list(path.glob("*.bin"))
-        tpm_datasets = [
-            TokenizedPreTrainDataset(str(f), block_size, padding_value=padding_value)
-            for f in filelist
-        ]
+        tpm_datasets = [TokenizedPreTrainDataset(str(f), block_size, padding_value=padding_value) for f in filelist]
         tmp_dataset = ConcatDataset(tpm_datasets)
         datasets.append(tmp_dataset)
-    dataset = ConcatDatasetsWithProbabilities(
-        datasets, list(dataset_names_splits_and_proportions.values())
-    )
+    dataset = ConcatDatasetsWithProbabilities(datasets, list(dataset_names_splits_and_proportions.values()))
 
     # min_length = min(len(d) for d in datasets)
     # sum_proportions = sum(dataset_names_splits_and_proportions.values())
@@ -193,9 +186,7 @@ if __name__ == "__main__":
     import fire
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    fire.Fire(
-        {
-            "write_tokenized_dataset": write_tokenized_dataset,
-            "read_tokenized_dataset": test_read_tokenized_dataset,
-        }
-    )
+    fire.Fire({
+        "write_tokenized_dataset": write_tokenized_dataset,
+        "read_tokenized_dataset": test_read_tokenized_dataset,
+    })

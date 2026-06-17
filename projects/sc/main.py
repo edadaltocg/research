@@ -1,21 +1,17 @@
 import logging
 import os
-import random
 import sys
 import time
 from functools import partial
 
 import torch
-from datasets import load_dataset
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, DistributedSampler
 from torchtune import config, training, utils
-from torchtune.data import Message
 from torchtune.modules import TransformerDecoder
 from torchtune.modules.tokenizers import ModelTokenizer
 from tqdm import tqdm
 
-from projects.sc.download import CACHE_DIR
 from projects.sc.few_shot_prompt import gsm8k
 from projects.sc.generate_sc import generate_lm_sc
 from research.llm.collate import collate_self_consistency
@@ -101,9 +97,7 @@ def main(cfg: DictConfig) -> None:
     shuffle = False
     batch_size = cfg.get("batch_size", 1)  # only supports batch size of 1
     n_paths = cfg.get("n_paths", 8)
-    sampler = DistributedSampler(
-        dataset, num_replicas=world_size, rank=rank, shuffle=shuffle, seed=seed
-    )
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=shuffle, seed=seed)
     dataloader = DataLoader(
         dataset=dataset,
         batch_size=max(batch_size // n_paths, 1),
@@ -155,9 +149,7 @@ def main(cfg: DictConfig) -> None:
         log.debug("Save Results")
         features_dir = os.path.join(cfg.output_dir, "features", cfg.model_id)
         os.makedirs(features_dir, exist_ok=True)
-        results_path = os.path.join(
-            features_dir, f"{idx}_{rank}-{world_size}_{dataset_name}_results_{seed}.pt"
-        )
+        results_path = os.path.join(features_dir, f"{idx}_{rank}-{world_size}_{dataset_name}_results_{seed}.pt")
         torch.save(out, results_path)
 
         pbar.update(1)

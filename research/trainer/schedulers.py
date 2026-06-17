@@ -1,3 +1,8 @@
+import math
+
+import torch
+
+
 def get_lr(it: int, lr_decay_iters: int, learning_rate: float, warmup_iters: int, min_lr: float):
     # 1) linear warmup for warmup_iters steps
     if it < warmup_iters:

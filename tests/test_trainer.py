@@ -9,9 +9,7 @@ from torch import nn, optim
 log = logging.getLogger(__name__)
 
 
-model = nn.Sequential(
-    nn.Linear(768, 128), nn.ReLU(), nn.Linear(128, 2), nn.LogSoftmax(dim=-1)
-)
+model = nn.Sequential(nn.Linear(768, 128), nn.ReLU(), nn.Linear(128, 2), nn.LogSoftmax(dim=-1))
 X = torch.randn(1000, 768)
 train_dataset = torch.utils.data.TensorDataset(X, torch.randint(0, 2, (1000,)))
 eval_dataset = torch.utils.data.TensorDataset(X, torch.randint(0, 2, (1000,)))
@@ -125,11 +123,9 @@ if __name__ == "__main__":
     """
     torchrun --standalone --nnodes=1 --nproc_per_node=2 tests/test_trainer.py cuda
     """
-    fire.Fire(
-        {
-            "cpu": test_trainer_cpu,
-            "cuda": test_trainer_cuda_ddp,
-            "ddp": test_trainer_cuda_ddp,
-            "fsdp": test_trainer_fsdp,
-        }
-    )
+    fire.Fire({
+        "cpu": test_trainer_cpu,
+        "cuda": test_trainer_cuda_ddp,
+        "ddp": test_trainer_cuda_ddp,
+        "fsdp": test_trainer_fsdp,
+    })

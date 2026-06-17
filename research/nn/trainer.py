@@ -17,7 +17,6 @@ from torch.distributed.fsdp import (
     BackwardPrefetch,
     FullOptimStateDictConfig,
     FullStateDictConfig,
-    MixedPrecision,
     StateDictType,
 )
 from torch.distributed.fsdp import (

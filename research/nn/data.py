@@ -10,12 +10,13 @@ import regex
 # from tensordict import TensorDict, MemoryMappedTensor
 import torch
 import torch.utils.data
-from dnn.tokenizer import Tokenizer
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset, IterableDataset
 from torchvision.transforms import v2
 from tqdm import tqdm
+
+from research.llm.tokenizers.tokenizer import Tokenizer
 
 
 class DummyDataset(Dataset):
@@ -407,16 +408,23 @@ class ImageClassificationDataset(Dataset):
 
     def __getitem__(self, idx):
         # find the chunk that contains the idx
+        chunk_start = 0
+        chunk_path = None
         for (start, end), chunk in self.mapping.items():
             if int(start) <= idx < int(end):
+                chunk_start = int(start)
+                chunk_path = chunk
                 break
-        chunk = torch.load(chunk)
+        if chunk_path is None:
+            raise IndexError(f"Index {idx} out of bounds")
+        chunk = torch.load(chunk_path)
+        img, label = chunk[idx - chunk_start]
 
         if self.transform is not None:
             img = self.transform(img)
         if self.target_transform is not None:
             label = self.target_transform(label)
-        return {"x": ..., "y": ...}
+        return {"x": img, "y": label}
 
 
 def make_image_pre_processor(
@@ -467,7 +475,7 @@ def img2base64_str(file_name: str) -> str:
     with open(file_name, "rb") as img_file:
         base64_bytes = base64.b64encode(img_file.read())
 
-    return base64_bytes
+    return base64_bytes.decode("utf-8")
 
 
 def preprocess_text(text: str) -> list[str]:

@@ -1,22 +1,19 @@
+import ast
+import csv
 import itertools
 import logging
-import ast
-import re
-
-from pydantic import BaseModel, ValidationError
-from typing import Any, List
-import csv
-import pandas as pd
 import os
-from collections import Counter, defaultdict
+import re
+from collections import defaultdict
 from glob import glob
-from pprint import pprint
+from typing import Any
 
 import matplotlib.pyplot as plt
-import numpy as np
+import pandas as pd
 import seaborn as sns
 import torch
 from omegaconf import OmegaConf
+from pydantic import BaseModel
 from torchtune import config
 from tqdm import tqdm
 
@@ -33,13 +30,11 @@ def str_to_list(s):
 
 def _plot_token_trajectories(logits, tokens, correct):
     # Plotting setup
-    for idx, (logit_seq, token_seq, is_correct) in enumerate(zip(logits, tokens, correct)):
+    for idx, (logit_seq, token_seq, is_correct) in enumerate(zip(logits, tokens, correct, strict=False)):
         log_probs = torch.log_softmax(
             torch.Tensor(logit_seq), dim=-1
         )  # assumed logits are np.ndarray; convert to tensor for computation
-        log_prob_trajectory = log_probs.max(
-            axis=-1
-        ).values.numpy()  # Getting the max log prob for each token
+        log_prob_trajectory = log_probs.max(axis=-1).values.numpy()  # Getting the max log prob for each token
 
         # Get the log probability trajectory for the sampled token sequence
         # Assume token_seq is a list of indices corresponding to the actual tokens
@@ -48,9 +43,7 @@ def _plot_token_trajectories(logits, tokens, correct):
         plt.figure(figsize=(12, 6))
         sns.lineplot(data=log_prob_trajectory, marker="o", label="Token Log Probs")
         plt.axhline(y=0, color="r", linestyle="--", linewidth=1, label="Base Log Prob Level")
-        plt.title(
-            f"Trajectory of Token Log Probs - {'Correct' if is_correct else 'Incorrect'} Example #{idx}"
-        )
+        plt.title(f"Trajectory of Token Log Probs - {'Correct' if is_correct else 'Incorrect'} Example #{idx}")
         plt.xlabel("Time step")
         plt.ylabel("Log Probability")
         plt.legend()
@@ -106,12 +99,7 @@ def preprocessing(
                     text: str = tokenizer.decode(tt.numpy().tolist())
                     v.append(text)
                     # get model final answer
-                    mfa = (
-                        text.split("The answer is: ")[-1]
-                        .split(".")[0]
-                        .strip()
-                        .replace("!", "")[:10]
-                    )
+                    mfa = text.split("The answer is: ")[-1].split(".")[0].strip().replace("!", "")[:10]
                     model_final_answers.append(mfa)
                 results["model_final_answer"].append(model_final_answers)
 
@@ -162,14 +150,14 @@ def acc_preprocessing(
     class DataModel(BaseModel):
         id: str
         final_answer: float
-        model_final_answer: List[Any]
-        logits: List[List[float]]
+        model_final_answer: list[Any]
+        logits: list[list[float]]
         model_id: str
         dataset_id: str
         seed: int
 
     # Function to transform a list of Pydantic objects into a CSV file
-    def transform_to_csv(data_list: List[DataModel], csv_file_path: str):
+    def transform_to_csv(data_list: list[DataModel], csv_file_path: str):
         # Extract field names from the Pydantic model
         field_names = DataModel.__fields__.keys()
 
@@ -185,7 +173,7 @@ def acc_preprocessing(
                 writer.writerow(data.dict())
 
     # Function to transform the results dictionary into a list of DataModel objects
-    def transform_results_to_list(results: dict) -> List[DataModel]:
+    def transform_results_to_list(results: dict) -> list[DataModel]:
         data_list = []
         pattern = r"\d+\.?\d*"
         for i in tqdm(range(len(results["final_answer"]))):
@@ -217,11 +205,7 @@ def acc_preprocessing(
     df = pd.read_csv("/tmp/output.csv")
     df["model_final_answer"] = df["model_final_answer"].apply(str_to_list)
     df["logits"] = df["logits"].apply(ast.literal_eval)
-    assert (
-        df["logits"]
-        .apply(lambda x: isinstance(x, list) and all(isinstance(i, float) for i in x))
-        .all()
-    )
+    assert df["logits"].apply(lambda x: isinstance(x, list) and all(isinstance(i, float) for i in x)).all()
     print(df.head(5))
     df = (
         df.groupby("id")

@@ -25,9 +25,7 @@ for path in sorted(src.rglob("*.py")):
     parts = tuple(module_path.parts)
     parts = (prefix, *parts)
 
-    if parts[-1] == "__init__":
-        continue
-    elif parts[-1] == "__main__":
+    if parts[-1] == "__init__" or parts[-1] == "__main__":
         continue
 
     with mkdocs_gen_files.open(full_doc_path, "w") as fd:
