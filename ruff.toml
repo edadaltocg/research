@@ -28,6 +28,16 @@ ignore = [
   "B904",  # Within an except clause, raise exceptions with raise ... from err
   "S101",  # Assert statements are standard for checking tensor shapes and types in deep learning research
   "TRY003", # Long exception messages are common and helpful in research scripts
+  "C901",  # Function/method too complex (ML layers and trainers are inherently complex and stateful)
+  "A001",  # Shadowing builtin names like compile or id (extremely common in PyTorch ecosystem)
+  "A002",  # Argument shadowing builtin names like input (standard for model forward signatures)
+  "S105",  # Hardcoded password check false positive on tokenizer keywords containing "token"
+  "SIM108", # Enforcing ternary operators (multi-line if-else blocks are more readable in model files)
+  "RUF059", # Unused unpacked variables (common when unpacking shapes: b, c, h, w = x.shape)
+  "B026",  # Star-arg unpacking after keyword argument
+  "B027",  # Abstract base class method without abstract decorator
+  "PGH003", # Specific type ignore codes (plain `# type: ignore` is much easier and standard)
+  "RUF002", # Ambiguous characters in docstrings (like EN dash in references)
 ]
 
 [lint.per-file-ignores]
