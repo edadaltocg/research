@@ -42,6 +42,8 @@ from torch.utils.data.distributed import DistributedSampler
 from torcheval.metrics import Max, Mean, Throughput
 from torcheval.metrics.toolkit import sync_and_compute
 
+from research.trainer.utils import move_to_device
+
 T = TypeVar("T")
 
 log = logging.getLogger(__name__)
@@ -192,7 +194,7 @@ class Trainer:
 
         self.best_eval_loss: float = float("inf")
 
-        self.metrics = {}
+        self.metrics: dict[str, Any] = {}
         self.metrics["train/throughput"] = Throughput(device=self.device)
         self.metrics["eval/throughput"] = Throughput(device=self.device)
         self.metrics["train/throughput"] = Throughput(device=self.device)
@@ -230,7 +232,7 @@ class Trainer:
     @property
     def _device_eval_batch_size(self):
         if self.device_eval_batch_size is None:
-            self.log.warn("Setting device_eval_batch_size to device_train_batch_size")
+            self.log.warning("Setting device_eval_batch_size to device_train_batch_size")
             self.device_eval_batch_size = self.device_train_batch_size
         return self.device_eval_batch_size
 
@@ -257,12 +259,13 @@ class Trainer:
 
         # compile
         if self.compile:
-            self.model = torch.compile(
+            model_compiled: Any = torch.compile(
                 self.model,
                 mode=self.compiler_mode,
                 backend=self.compiler_backend,
                 fullgraph=self.compiler_fullgraph,
             )
+            self.model = model_compiled
 
     @staticmethod
     def setup_distrib_if_available(backend="nccl", master_addr="localhost", master_port="12355"):
@@ -280,7 +283,7 @@ class Trainer:
             os.environ["MASTER_PORT"] = master_port
             rank = os.environ.get("LOCAL_RANK", None)
             if rank is None:
-                log.warn("Consider running with torchrun.")
+                log.warning("Consider running with torchrun.")
                 return
 
             # initialize the process group
@@ -298,10 +301,7 @@ class Trainer:
         # log in stdout and file
         file_handler = logging.FileHandler(filename=self.dest_path / self.log_filename)
         stdout_handler = logging.StreamHandler(stream=sys.stdout)
-        if self.local_rank == 0:
-            level = self.log_level
-        else:
-            level = logging.ERROR
+        level = self.log_level if self.local_rank == 0 else logging.ERROR
         handlers = [file_handler, stdout_handler]
         logging.basicConfig(handlers=handlers, level=level, format=self.log_format)
         self.log = log
@@ -345,7 +345,7 @@ class Trainer:
     @property
     def optimizer_state_dict(self):
         if self.fsdp and self.is_dist_avail_and_initialized() and False:
-            with FSDP.state_dict_type(self.optimizer, StateDictType.FULL_STATE_DICT, self.fsdp_optim_policy):
+            with FSDP.state_dict_type(self.model, StateDictType.FULL_STATE_DICT, self.fsdp_optim_policy):
                 return self.optimizer.state_dict()
         return self.optimizer.state_dict()
 
@@ -383,9 +383,7 @@ class Trainer:
     def is_dist_avail_and_initialized():
         if not dist.is_available():
             return False
-        if not dist.is_initialized():
-            return False
-        return True
+        return dist.is_initialized()
 
     @property
     def world_size(self) -> int:
@@ -467,7 +465,7 @@ class Trainer:
                 StateDictType.FULL_STATE_DICT,
                 FullStateDictConfig(offload_to_cpu=True, rank0_only=True),
             ):
-                model_state_dict = self.model.state_dict()
+                self.model.state_dict()
 
         trainer_state_dict = {
             "total_steps": self.num_steps,
@@ -544,18 +542,13 @@ class Trainer:
     def should_log_eval_metrics(self, step: int, max_step: int) -> bool:
         if step == 1:
             return True
-        if step == max_step:
-            return True
-        return False
+        return step == max_step
 
     def latest_metrics(self, pattern: str = ""):
         for k, m in self.metrics.items():
             if pattern not in k:
                 continue
-            if self.is_dist_avail_and_initialized() and "throughput" not in k:
-                v = sync_and_compute(m)
-            else:
-                v = m.compute()
+            v = sync_and_compute(m) if self.is_dist_avail_and_initialized() and "throughput" not in k else m.compute()
             if isinstance(v, torch.Tensor):
                 v = v.item()
             self.results[k].append((self.curr_step, v))
@@ -632,10 +625,7 @@ class Trainer:
 
     def train(self):
         self.start_time = time.time()
-        if self.profile:
-            profiler = self.torch_profiler
-        else:
-            profiler = nullcontext()
+        profiler = self.torch_profiler if self.profile else nullcontext()
 
         pbar = None
         if self.local_rank == 0:
@@ -650,12 +640,13 @@ class Trainer:
             eval_metrics = self.eval()
             self.log_metrics_to_console("eval", eval_metrics)
 
-        for k, m in self.metrics.items():
+        for _k, m in self.metrics.items():
             m.reset()
 
         t0 = time.monotonic()
-        with profiler as p:
-            for self.curr_step in range(self.start_step, self.num_steps):
+        with profiler:
+            for step in range(self.start_step, self.num_steps):
+                self.curr_step = step
                 self.model.train()
                 batch = next(iter(self.train_dataloader))
                 batch = move_to_device(batch, self.device)

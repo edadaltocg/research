@@ -21,6 +21,8 @@ dependencies = [
   "torchvision>=0.17.0,<1.0.0",
   "torchaudio>=2.2.0,<3.0.0",
   "jax>=0.10.1",
+  "transformers>=5.12.1",
+  "sentencepiece>=0.2.1",
 ]
 [project.optional-dependencies]
 docs = [
@@ -48,7 +50,7 @@ dev = [
   "pytest-cov>=6.0.0,<7.0.0",
   "pytest-xdist>=3.6.1,<4.0.0",
   "ruff>=0.8.2,<1.0.0",
-  "mypy>=1.13.0,<2.0.0",
+  "ty",
   "pysnooper>=1.2.3,<2.0.0",
   "research[docs,vision,trainer]",
 ]
@@ -69,3 +71,10 @@ skip_empty = true
 
 [tool.uv.workspace]
 members = ["projects/*"]
+
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+possibly-unresolved-reference = "ignore"

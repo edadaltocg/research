@@ -1,3 +1,6 @@
+import math
+from collections.abc import Callable
+
 import torch.nn.functional as F
 from torch import Tensor, nn
 
@@ -50,10 +53,7 @@ class MultiQueryAttention(nn.Module):
         k = self.wk(x).view(bsz, -1, 1, self.head_dim).expand(-1, -1, self.num_q_heads, -1)
         v = self.wv(x).view(bsz, -1, 1, self.head_dim).expand(-1, -1, self.num_q_heads, -1)
 
-        if self.training:
-            dropout_p = self.dropout_p
-        else:
-            dropout_p = 0
+        dropout_p = self.dropout_p if self.training else 0
 
         x = self.sdpa(
             q,

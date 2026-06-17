@@ -3,8 +3,9 @@ import logging
 import torch
 import torch.nn.functional as F
 import torch.utils.data
-from dnn.trainer_class import Trainer
 from torch import nn, optim
+
+from research.trainer.trainer_class import Trainer
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ def test_trainer_cpu_debug():
         compile=False,
         force_cpu=True,
     )
-    m = t.eval()
+    t.eval()
     t.train()
     t.close()
 
@@ -71,7 +72,7 @@ def test_trainer_cpu():
         run_name="test_trainer_cpu",
         output_root="output/tests/train",
     )
-    m = t.eval()
+    t.eval()
     t.train()
     t.close()
 
@@ -89,7 +90,7 @@ def test_trainer_cuda_ddp():
         run_name="test_trainer_cuda",
         output_root="output/tests/train",
     )
-    m = t.eval()
+    t.eval()
     t.train()
     t.close()
 
@@ -112,7 +113,7 @@ def test_trainer_fsdp():
         run_name="test_trainer_fsdp",
         output_root="output/tests/train",
     )
-    m = t.eval()
+    t.eval()
     t.train()
     t.close()
 

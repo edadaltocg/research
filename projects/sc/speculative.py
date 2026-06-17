@@ -1,6 +1,37 @@
 import torch
 import torch.nn.functional as F
+from einops import rearrange
 from torch import Tensor, nn
+
+
+def top_k(logits, thres=0.9):
+    k = max(1, int(logits.shape[-1] * (1 - thres)))
+    val, ind = torch.topk(logits, k)
+    probs = torch.full_like(logits, float("-inf"))
+    probs.scatter_(-1, ind, val)
+    return probs
+
+
+def gumbel_noise(t):
+    noise = torch.zeros_like(t).uniform_(0, 1)
+    return -torch.log(-torch.log(noise))
+
+
+def gumbel_sample(t, temperature=1.0, dim=-1):
+    if temperature == 0:
+        return t.argmax(dim=dim)
+    return ((t / temperature) + gumbel_noise(t)).argmax(dim=dim)
+
+
+def safe_div(num, den, eps=1e-10):
+    if isinstance(den, torch.Tensor):
+        return num / den.clamp(min=eps)
+    else:
+        return num / max(den, eps)
+
+
+def find_first_true_index(bool_tensor, dim=-1):
+    return (bool_tensor.cumsum(dim=dim) == 0).sum(dim=dim)
 
 
 def speculative_decoding(
@@ -21,7 +52,7 @@ def speculative_decoding(
     # TODO:
 
     batch, prompt_seq_len, out, device = *prompt.shape, prompt.clone(), prompt.device
-    sample_num_times = max(0, seq_len - prompt_seq_len)
+    max(0, seq_len - prompt_seq_len)
 
     cache = None
     small_cache = None
@@ -76,7 +107,7 @@ def speculative_decoding(
 
         p, q = (rearrange(t, "b n 1 -> b n") for t in (p, q))
 
-        r = random_uniform = torch.zeros_like(q).float().uniform_(0, 1)
+        r = torch.zeros_like(q).float().uniform_(0, 1)
 
         accepted = find_first_true_index(r > (p / q))
 
@@ -104,26 +135,29 @@ def speculative_decoding(
         max_seq_len = seq_lens.amax()
 
         if batch > 1:
-            out = F.pad(out, (0, max_num_rejected), value=pad_id)
+            max_num_rejected_int = int(max_num_rejected.item())
+            out = F.pad(out, (0, max_num_rejected_int), value=pad_id)
             out = out[batch_range, seq_offset_indices]
 
-            cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value=pad_id) for t in cache)
-            small_cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value=pad_id) for t in small_cache)
+            if cache is not None:
+                cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected_int), value=pad_id) for t in cache)
+                cache = tuple(rearrange(t, "b ... n d -> b n ... d") for t in cache)
+                cache = tuple(t[batch_range, seq_offset_indices] for t in cache)
+                cache = tuple(rearrange(t, "b n ... d -> b ... n d") for t in cache)
 
-            cache = tuple(rearrange(t, "b ... n d -> b n ... d") for t in cache)
-            small_cache = tuple(rearrange(t, "b ... n d -> b n ... d") for t in small_cache)
-
-            cache = tuple(t[batch_range, seq_offset_indices] for t in cache)
-            small_cache = tuple(t[batch_range, seq_offset_indices] for t in small_cache)
-
-            cache = tuple(rearrange(t, "b n ... d -> b ... n d") for t in cache)
-            small_cache = tuple(rearrange(t, "b n ... d -> b ... n d") for t in small_cache)
+            if small_cache is not None:
+                small_cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected_int), value=pad_id) for t in small_cache)
+                small_cache = tuple(rearrange(t, "b ... n d -> b n ... d") for t in small_cache)
+                small_cache = tuple(t[batch_range, seq_offset_indices] for t in small_cache)
+                small_cache = tuple(rearrange(t, "b n ... d -> b ... n d") for t in small_cache)
 
             if out.shape[-1] > max_seq_len:
                 left_index = out.shape[-1] - max_seq_len
                 out = out[:, left_index:]
-                cache = tuple(t[..., left_index:, :] for t in cache)
-                small_cache = tuple(t[..., left_index:, :] for t in small_cache)
+                if cache is not None:
+                    cache = tuple(t[..., left_index:, :] for t in cache)
+                if small_cache is not None:
+                    small_cache = tuple(t[..., left_index:, :] for t in small_cache)
 
         # sample the additional token, one of the tricks in the paper to better bound the worst case
 
@@ -136,7 +170,7 @@ def speculative_decoding(
 
     num_pad_left = out.shape[-1] - seq_lens
     max_pad_left = num_pad_left.amax()
-    out = F.pad(out, (0, max_pad_left), value=pad_id)
+    out = F.pad(out, (0, int(max_pad_left.item())), value=pad_id)
 
     seq_len_range = torch.arange(seq_len, device=device, dtype=torch.long)
     out = out[batch_range, seq_len_range + num_pad_left[..., None]]

@@ -28,11 +28,11 @@ def scaled_dot_product_attention(
     Returns:
         Tensor: Scaled dot product attention tensor. Shape (batch_size, num_heads, seq_len, embed_dim).
     """
-    b, h, n, d = query.size()
+    _b, _h, _n, d = query.size()
     if scale is None:
         scale = d**-0.5
     if is_causal:
-        attn_mask = torch.tril(torch.ones(query.size(-2), query.size(-2)))
+        attn_mask = torch.tril(torch.ones(query.size(-2), query.size(-2), device=query.device, dtype=query.dtype))
     attn = torch.matmul(query, key.transpose(-2, -1)) * scale
     if attn_mask is not None:
         # attn += mask

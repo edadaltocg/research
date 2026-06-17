@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 import numpy as np
 import torch
@@ -25,13 +26,15 @@ def train_gpt2_wiki(
     memmap=False,
 ):
     if download:
-        dataset = load_dataset("wikitext", "wikitext-2-raw-v1", num_proc=os.cpu_count() - 1)  # type: ignore
-        dataset.save_to_disk("output/datasets/wikitext")  # type: ignore
+        cpu_count = os.cpu_count()
+        num_proc = cpu_count - 1 if cpu_count is not None else 1
+        dataset_dl: Any = load_dataset("wikitext", "wikitext-2-raw-v1", num_proc=num_proc)
+        dataset_dl.save_to_disk("output/datasets/wikitext")
 
     if train_tokenizer:
-        dataset = load_from_disk("output/datasets/wikitext")
-        print(dataset)
-        train_sp_tokenizer_from_iterator(iter(dataset["train"]["text"]), prefix="gpt_wiki", vocab_size=vocab_size)
+        dataset_tok: Any = load_from_disk("output/datasets/wikitext")
+        print(dataset_tok)
+        train_sp_tokenizer_from_iterator(iter(dataset_tok["train"]["text"]), prefix="gpt_wiki", vocab_size=vocab_size)
 
     if memmap:
         tokenizer = Tokenizer("output/tokenizers/gpt_wiki.model")
@@ -41,7 +44,7 @@ def train_gpt2_wiki(
             dataloader = torch.utils.data.DataLoader(
                 dataset,
                 batch_size=128,
-                num_workers=8,  # type: ignore
+                num_workers=8,
                 collate_fn=collate_flat,
             )
             MemoryMapped1DDataset.from_dataloader(dataloader, f"output/datasets/wikitext/{split}", dtype=np.uint16)
@@ -81,7 +84,7 @@ def train_gpt2_wiki(
         logits = model(x)
         logits_loss = logits.view(-1, logits.size(-1))
         loss = F.cross_entropy(logits_loss, y, reduction="sum")
-        ppl = torch.exp(loss / y.size(0))
+        torch.exp(loss / y.size(0))
         return loss
 
     standard_trainer(

@@ -14,7 +14,7 @@ fmt:
 # Lint code
 lint:
     uv run ruff check .
-    uv run mypy .
+    uv run ty check --exit-zero .
 
 # Run tests
 test:

@@ -189,6 +189,6 @@ class TrainerBase(ABC):
         with open(config_file_path) as file:
             config_dict = yaml.safe_load(file)
 
-        optimizer_config = config_dict.pop("optimizer")
-        scheduler_config = config_dict.pop("scheduler")
-        criterion_config = config_dict.pop("criterion")
+        config_dict.pop("optimizer")
+        config_dict.pop("scheduler")
+        config_dict.pop("criterion")

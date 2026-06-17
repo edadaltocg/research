@@ -7,7 +7,7 @@ def greedy_sample(logits: Tensor):
 
 
 def top_p_probs(probs: Tensor, p: float):
-    probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True)
+    probs_sort, _probs_idx = torch.sort(probs, dim=-1, descending=True)
     probs_sum = torch.cumsum(probs_sort, dim=-1)
     mask = probs_sum - probs_sort > p
     probs_sort[mask] = 0.0

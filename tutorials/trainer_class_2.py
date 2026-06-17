@@ -8,7 +8,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 import numpy as np
 import torch
@@ -62,15 +62,15 @@ def get_scheduler_cls(scheduler_name: str) -> optim.lr_scheduler._LRScheduler:
     return getattr(optim.lr_scheduler, scheduler_name)
 
 
-def move_to_device(o: T, device: torch.device) -> T:
+def move_to_device(o: Any, device: torch.device) -> Any:
     if isinstance(o, torch.Tensor):
-        return o.to(device)  # type: ignore[return-value]
+        return o.to(device)
     elif isinstance(o, dict):
-        return {k: move_to_device(v, device) for k, v in o.items()}  # type: ignore[return-value]
+        return {k: move_to_device(v, device) for k, v in o.items()}
     elif isinstance(o, list):
-        return [move_to_device(x, device) for x in o]  # type: ignore[return-value]
+        return [move_to_device(x, device) for x in o]
     elif isinstance(o, tuple):
-        return tuple(move_to_device(x, device) for x in o)  # type: ignore[return-value]
+        return tuple(move_to_device(x, device) for x in o)
     else:
         return o
 
@@ -186,7 +186,7 @@ class Trainer:
         self.model = self.setup_model()
         # log.info(f"{self.model.dtype=}")
         if self.compile:
-            self.model = self.compile_model()  # type: ignore
+            self.model = self.compile_model()
         self.optimizer = self.setup_optimizer()
         self.scheduler = self.setup_lr_scheduler()
         self.pbar = self.setup_pbar()
@@ -343,7 +343,7 @@ class Trainer:
         )
 
         cosine_decay = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, self.num_steps - self.warmup_steps)
-        schedulers = [linear_warmup, cosine_decay]
+        schedulers: list[Any] = [linear_warmup, cosine_decay]
         scheduler = optim.lr_scheduler.SequentialLR(self.optimizer, schedulers, milestones=[self.warmup_steps])
         return scheduler
 
@@ -441,11 +441,10 @@ class Trainer:
             self.eval_batch = move_to_device(eval_batch, self.device)
             self.eval_outputs = self.eval_forward(self.model, self.eval_batch)
         eval_loss = self.eval_outputs["loss"].item()
-        if self.checkpoint_best:
-            if eval_loss < self.best_eval_loss:
-                self.best_eval_loss = eval_loss
-                self.checkpoint("best-")
-                log.info(f"New best eval loss: {eval_loss=} at {self.step=}")
+        if self.checkpoint_best and eval_loss < self.best_eval_loss:
+            self.best_eval_loss = eval_loss
+            self.checkpoint("best-")
+            log.info(f"New best eval loss: {eval_loss=} at {self.step=}")
 
     def checkpoint(self, tag=""):
         if self.WORLD_SIZE > 1:
@@ -617,7 +616,7 @@ def test_trainer(
         x = batch[0]  # [:, :-1].contiguous()
         assert x.device.type == "cuda", f"{x.device=}"
         assert model.device.type == "cuda", f"{model.device=}"
-        outputs, extra_logits = model.forward(x, labels=True)
+        outputs, _extra_logits = model.forward(x, labels=True)
         loss = outputs.loss
         ppl = torch.exp(loss)
         return {"loss": loss, "ppl": ppl}
@@ -626,7 +625,7 @@ def test_trainer(
         x = batch[0]  # [:, :-1].contiguous()
         assert x.device.type == "cuda", f"{x.device=}"
         assert model.device.type == "cuda", f"{model.device=}"
-        outputs, extra_logits = model.forward(x, labels=True)
+        outputs, _extra_logits = model.forward(x, labels=True)
         loss = outputs.loss
         ppl = torch.exp(loss)
         return {"loss": loss, "ppl": ppl}
@@ -655,7 +654,7 @@ def test_trainer(
         eval_forward = eval_forward_example
 
     dataset = []
-    for i in range(num_samples):
+    for _i in range(num_samples):
         assert vocab_size < seq_len
         elems = [torch.arange(0, vocab_size)] * (2 * seq_len // vocab_size)
         elem = torch.cat(elems)[: seq_len + 1]
@@ -712,6 +711,7 @@ def test_trainer(
         extra_preds = [logits.argmax(-1).cpu() for logits in extra_logits]
     else:
         elem = "1 2 3 4 5 6"
+        assert tokenizer is not None
         input_ids = tokenizer.encode(elem, return_tensors="pt")
         y = my_trainer.model(input_ids, labels=True)
         logits_final = y[0].logits
@@ -778,7 +778,7 @@ def calm_trainer(
     }
     head_type = experiment_idx_to_head_type[experiment_idx]
 
-    model, tokenizer = prepare_calm_llama(num_layers=num_calm_layers, head_type=head_type)
+    model, _tokenizer = prepare_calm_llama(num_layers=num_calm_layers, head_type=head_type)
     auto_wrap_policy = partial(
         transformer_auto_wrap_policy,
         transformer_layer_cls={

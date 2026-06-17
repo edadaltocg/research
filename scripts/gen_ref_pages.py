@@ -4,7 +4,7 @@
 # ///
 """Generate the code reference pages."""
 
-import os
+import contextlib
 from pathlib import Path
 
 root = Path(__file__).parent.parent
@@ -18,10 +18,8 @@ ref_dir.mkdir(parents=True, exist_ok=True)
 # Clear existing files in docs/reference
 for path in list(ref_dir.glob("**/*")):
     if path.is_file():
-        try:
+        with contextlib.suppress(OSError):
             path.unlink()
-        except OSError:
-            pass
 
 print(f"Generating reference pages from {src}")
 

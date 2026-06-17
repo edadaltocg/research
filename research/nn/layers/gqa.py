@@ -1,3 +1,4 @@
+import math
 from collections.abc import Callable
 
 import torch
@@ -59,15 +60,12 @@ class GroupedQueryAttention(nn.Module):
         k = self.wk(x).view(bsz, -1, self.num_kv_heads, self.head_dim)
         v = self.wv(x).view(bsz, -1, self.num_kv_heads, self.head_dim)
 
-        k = torch.repeat_interleave(k, self.repeats, dim=2)
-        v = torch.repeat_interleave(v, self.repeats, dim=2)
+        k = torch.repeat_interleave(k, self.kv_repeats, dim=2)
+        v = torch.repeat_interleave(v, self.kv_repeats, dim=2)
 
-        q, k, v = map(lambda x: x.transpose(1, 2), (q, k, v))
+        q, k, v = (x.transpose(1, 2) for x in (q, k, v))
 
-        if self.training:
-            dropout_p = self.dropout_p
-        else:
-            dropout_p = 0
+        dropout_p = self.dropout_p if self.training else 0
 
         x = self.sdpa(
             q,

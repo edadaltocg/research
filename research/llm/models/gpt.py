@@ -1,13 +1,14 @@
 import torch.nn.functional as F
-from dnn.modeling.attention import MHA
-from dnn.modeling.dense import MLP
-from dnn.modeling.pos_encoding import EmbeddingPositionalEncoding
-from dnn.modeling.transformer import (
-    LayerNorm,
+from torch import nn
+
+from research.nn.layers.layernorm import LayerNorm
+from research.nn.layers.mha import MHA
+from research.nn.layers.pos_encoding import EmbeddingPositionalEncoding
+from research.nn.models.mlp import MLP
+from research.nn.models.transformer import (
     VanillaTransformerEncoder,
     VanillaTransformerEncoderLayer,
 )
-from torch import nn
 
 
 class GPT(VanillaTransformerEncoder):
@@ -35,39 +36,39 @@ class GPT(VanillaTransformerEncoder):
         )
 
 
-gpt2_tiny_config = dict(
-    vocab_size=50257,
-    embed_dim=384,
-    max_seq_len=512,
-    num_heads=6,
-    num_layers=6,
-)
+gpt2_tiny_config = {
+    "vocab_size": 50257,
+    "embed_dim": 384,
+    "max_seq_len": 512,
+    "num_heads": 6,
+    "num_layers": 6,
+}
 
-gpt2_config = dict(
-    vocab_size=50257,
-    embed_dim=768,
-    max_seq_len=1024,
-    num_heads=12,
-    num_layers=12,
-)
-gpt_medium_config = dict(
-    vocab_size=50257,
-    embed_dim=1024,
-    max_seq_len=1024,
-    num_heads=16,
-    num_layers=24,
-)
-gpt2_large_config = dict(
-    vocab_size=50257,
-    embed_dim=1280,
-    max_seq_len=1024,
-    num_heads=20,
-    num_layers=36,
-)
-gpt_xl_config = dict(
-    vocab_size=50257,
-    embed_dim=1600,
-    max_seq_len=1024,
-    num_heads=25,
-    num_layers=48,
-)
+gpt2_config = {
+    "vocab_size": 50257,
+    "embed_dim": 768,
+    "max_seq_len": 1024,
+    "num_heads": 12,
+    "num_layers": 12,
+}
+gpt_medium_config = {
+    "vocab_size": 50257,
+    "embed_dim": 1024,
+    "max_seq_len": 1024,
+    "num_heads": 16,
+    "num_layers": 24,
+}
+gpt2_large_config = {
+    "vocab_size": 50257,
+    "embed_dim": 1280,
+    "max_seq_len": 1024,
+    "num_heads": 20,
+    "num_layers": 36,
+}
+gpt_xl_config = {
+    "vocab_size": 50257,
+    "embed_dim": 1600,
+    "max_seq_len": 1024,
+    "num_heads": 25,
+    "num_layers": 48,
+}

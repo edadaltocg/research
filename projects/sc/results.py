@@ -1,7 +1,9 @@
 import ast
 import csv
+import functools
 import itertools
 import logging
+import operator
 import os
 import re
 from collections import defaultdict
@@ -14,10 +16,9 @@ import seaborn as sns
 import torch
 from omegaconf import OmegaConf
 from pydantic import BaseModel
+from research.utils.logging import setup_logger
 from torchtune import config
 from tqdm import tqdm
-
-from research.utils.logging import setup_logger
 
 pd.set_option("display.max_columns", None)
 
@@ -30,11 +31,11 @@ def str_to_list(s):
 
 def _plot_token_trajectories(logits, tokens, correct):
     # Plotting setup
-    for idx, (logit_seq, token_seq, is_correct) in enumerate(zip(logits, tokens, correct, strict=False)):
+    for idx, (logit_seq, _token_seq, is_correct) in enumerate(zip(logits, tokens, correct, strict=False)):
         log_probs = torch.log_softmax(
             torch.Tensor(logit_seq), dim=-1
         )  # assumed logits are np.ndarray; convert to tensor for computation
-        log_prob_trajectory = log_probs.max(axis=-1).values.numpy()  # Getting the max log prob for each token
+        log_prob_trajectory = log_probs.max(dim=-1).values.numpy()  # Getting the max log prob for each token
 
         # Get the log probability trajectory for the sampled token sequence
         # Assume token_seq is a list of indices corresponding to the actual tokens
@@ -170,7 +171,7 @@ def acc_preprocessing(
 
             # Write the data rows
             for data in data_list:
-                writer.writerow(data.dict())
+                writer.writerow(data.model_dump())
 
     # Function to transform the results dictionary into a list of DataModel objects
     def transform_results_to_list(results: dict) -> list[DataModel]:
@@ -208,11 +209,12 @@ def acc_preprocessing(
     assert df["logits"].apply(lambda x: isinstance(x, list) and all(isinstance(i, float) for i in x)).all()
     print(df.head(5))
     df = (
-        df.groupby("id")
+        df
+        .groupby("id")
         .agg({
             "final_answer": "first",
-            "model_final_answer": lambda x: sum(x, []),
-            "logits": lambda x: sum(x, []),
+            "model_final_answer": lambda x: functools.reduce(operator.iadd, x, []),
+            "logits": lambda x: functools.reduce(operator.iadd, x, []),
             "model_id": "first",
             "dataset_id": "first",
             "seed": "first",
@@ -262,7 +264,7 @@ def viz():
         x = df_["final_answer"]
         y = df_["accuracy"]
         print("figure:")
-        g = sns.jointplot(x=x, y=y, kind="scatter", marginal_kws=dict(bins=20, fill=True))
+        sns.jointplot(x=x, y=y, kind="scatter", marginal_kws={"bins": 20, "fill": True})
         txt = f"""{model_id}
 {dataset_id}
 Avg: {sum(y) / len(y):.2f}
@@ -277,7 +279,7 @@ N: 64
             wrap=True,
             horizontalalignment="left",
             fontsize=12,
-            bbox=dict(facecolor="white", alpha=0.8),
+            bbox={"facecolor": "white", "alpha": 0.8},
         )
         # g.plot_joint(sns.kdeplot, color="r", zorder=0, levels=6)
         # g.plot_marginals(sns.rugplot, color="r", height=-0.15, clip_on=False)

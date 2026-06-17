@@ -14,6 +14,7 @@ def dummy_image(w, h):
 
 def visualize_from_path(image_path: str):
     image = cv2.imread(image_path)
+    assert image is not None
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     plt.figure(figsize=(6, 6))
     plt.axis("off")
@@ -30,7 +31,7 @@ def visualize_dataset(dataset, start_idx=0, samples=10, cols=5, show=False, dest
     dataset = copy.deepcopy(dataset)
     dataset.transform = None
     rows = samples // cols
-    figure, ax = plt.subplots(nrows=rows, ncols=cols, figsize=(12, 6))
+    _figure, ax = plt.subplots(nrows=rows, ncols=cols, figsize=(12, 6))
     for i in range(samples):
         image, _ = dataset[start_idx + i]
         ax.ravel()[i].imshow(image)
@@ -46,7 +47,7 @@ def visualize_augmentations(dataset, idx=0, samples=10, cols=5, show=False, dest
     dataset = copy.deepcopy(dataset)
     dataset.transform = A.Compose([t for t in dataset.transform if not isinstance(t, (A.Normalize, ToTensorV2))])
     rows = samples // cols
-    figure, ax = plt.subplots(nrows=rows, ncols=cols, figsize=(12, 6))
+    _figure, ax = plt.subplots(nrows=rows, ncols=cols, figsize=(12, 6))
     for i in range(samples):
         image, _ = dataset[idx]
         ax.ravel()[i].imshow(image)

@@ -6,6 +6,9 @@ from functools import partial
 
 import torch
 from omegaconf import DictConfig
+from research.utils import distrib
+from research.utils.logging import setup_logger
+from research.utils.utils import seed_all
 from torch.utils.data import DataLoader, DistributedSampler
 from torchtune import config, training, utils
 from torchtune.modules import TransformerDecoder
@@ -15,9 +18,6 @@ from tqdm import tqdm
 from projects.sc.few_shot_prompt import gsm8k
 from projects.sc.generate_sc import generate_lm_sc
 from research.llm.collate import collate_self_consistency
-from research.utils import distrib
-from research.utils.logging import setup_logger
-from research.utils.utils import seed_all
 
 log = logging.getLogger(__file__)
 

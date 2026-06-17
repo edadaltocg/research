@@ -132,7 +132,8 @@ def convert_from_pytorch_vit(source_state_dict):
     tgt_state_dict = OrderedDict()
     for k, v in source_state_dict.items():
         new_key = (
-            k.replace("encoder_layer_", "")
+            k
+            .replace("encoder_layer_", "")
             .replace("encoder.", "")
             .replace("conv_proj", "embedding.proj")
             .replace("pos_embedding", "pos_encoding.pe")

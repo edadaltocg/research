@@ -1,9 +1,14 @@
+import os
+
+import pytest
 import torch.distributed as dist
 import torch.utils.data
-import utils
 from torch.utils.data.distributed import DistributedSampler
 
+import research.utils as utils
 
+
+@pytest.mark.skipif("RANK" not in os.environ, reason="Requires torchrun distributed environment")
 def test_step_accumulation():
     """
     Rank: 1, Step: tensor([1.], device='cuda:1'), Loss: 1.0
@@ -41,7 +46,7 @@ def test_step_accumulation():
     init_start_event = torch.cuda.Event(enable_timing=True)
     init_end_event = torch.cuda.Event(enable_timing=True)
     step = torch.zeros(1, device=rank)
-    step_live = torch.zeros(1, device=rank)
+    torch.zeros(1, device=rank)
     one = torch.ones(1, device=rank)
     loss = torch.zeros(1, device=rank)
     init_start_event.record(torch.cuda.current_stream())

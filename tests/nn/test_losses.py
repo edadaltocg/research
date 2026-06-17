@@ -20,4 +20,4 @@ def test_ce():
     l1 = nll(log_softmax_math(dummy.logits), dummy.target)
     l2 = F.nll_loss(F.log_softmax(dummy.logits, dim=-1), dummy.target)
     l3 = F.cross_entropy(dummy.logits, dummy.target)
-    assert torch.eq(l1, l2) and torch.eq(l1, l3)
+    assert torch.allclose(l1, l2, atol=1e-4) and torch.allclose(l1, l3, atol=1e-4)

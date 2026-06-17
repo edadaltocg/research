@@ -1,6 +1,6 @@
 import logging
 
-from research.utils.logging import setup_logger
+from research.logger import setup_logger
 
 
 def main():

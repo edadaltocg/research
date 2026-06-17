@@ -50,6 +50,6 @@ class PatchEmbed3D(nn.Module):
         )
 
     def forward(self, x: Tensor) -> Tensor:
-        B, C, T, H, W = x.shape
+        _B, _C, _T, _H, _W = x.shape
         x = self.proj(x).flatten(2).transpose(1, 2)
         return x

@@ -124,9 +124,10 @@ def power_to_db(
 
     if callable(ref):
         # User supplied a function to calculate reference power
-        ref_value = ref(magnitude)
+        ref_func: Any = ref
+        ref_value: Any = ref_func(magnitude)
     else:
-        ref_value = np.abs(ref)
+        ref_value: Any = np.abs(ref)
 
     log_spec: np.ndarray = 10.0 * np.log10(np.maximum(amin, magnitude))
     log_spec -= 10.0 * np.log10(np.maximum(amin, ref_value))

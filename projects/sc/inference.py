@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -7,12 +8,10 @@ import torchtune
 import torchtune.models.llama3
 import torchtune.models.llama3_2
 from omegaconf import OmegaConf
-from torch import Tensor
+from research.utils.utils import safe_torch_load
 from torchtune import config, generation, training, utils
 from torchtune.models import convert_weights
 from torchtune.modules import TransformerDecoder
-
-from research.utils.utils import safe_torch_load
 
 logger = utils.get_logger("DEBUG")
 
@@ -25,7 +24,7 @@ def forward(
     encoder_input=None,
     encoder_mask=None,
     input_pos=None,
-) -> tuple[Tensor, Tensor]:
+) -> Any:
     """
     Args:
         tokens (torch.Tensor): input tensor with shape ``[b x s]``
@@ -117,9 +116,11 @@ def forward(
         # shape: [b, seq_len, out_dim]
         output = self.output(h).float()
 
-    # Output list if hidden states are requested, otherwise just the output
-    output = output if not hidden else [*hidden, h, output]
-    return h, output
+    if hidden:
+        hidden_val = hidden[0] if len(hidden) == 1 else hidden
+        return hidden_val, h, output
+    else:
+        return h, output
 
 
 def main():
@@ -171,7 +172,7 @@ def main():
     # Input the prompt to the model
     prompt = torch.tensor(tokens, dtype=torch.int, device=device).unsqueeze(0)
     logger.info(f"{prompt=}")
-    bsz, prompt_length = prompt.size()
+    _bsz, prompt_length = prompt.size()
     total_response_length = prompt_length + 1
     # Causal mask
     mask = torch.tril(

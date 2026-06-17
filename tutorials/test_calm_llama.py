@@ -19,7 +19,7 @@ def main():
 
     prompt = "Hey, are you conscious? Can you talk to me?"
     inputs = tokenizer(prompt, return_tensors="pt")
-    labels = tokenizer("I'm not conscious, but I can talk to you.", return_tensors="pt")
+    tokenizer("I'm not conscious, but I can talk to you.", return_tensors="pt")
     print(inputs)
     generate_ids = model.generate(**inputs, max_length=30)
     generated_str = tokenizer.decode(generate_ids[0], skip_special_tokens=True)

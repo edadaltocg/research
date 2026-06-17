@@ -4,11 +4,11 @@ from research.nn.activations.softmax import log_softmax_math
 
 
 def nl(softmax: Tensor, target: list[int] | Tensor) -> Tensor:
-    return -softmax[:, target].log().mean()
+    return -softmax[range(len(target)), target].log().mean()
 
 
 def nll(log_softmax: Tensor, target: list[int] | Tensor) -> Tensor:
-    return -log_softmax[:, target].mean()
+    return -log_softmax[range(len(target)), target].mean()
 
 
 def ce(logits: Tensor, target: list[int] | Tensor) -> Tensor:

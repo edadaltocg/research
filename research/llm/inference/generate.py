@@ -88,7 +88,7 @@ def generate_naive(model, idx, max_new_tokens, temperature=1.0, do_sample=False,
 def encode_tokens(tokenizer, string, bos=True, device="cuda"):
     tokens = tokenizer.encode(string)
     if bos:
-        tokens = [tokenizer.bos_id()] + tokens
+        tokens = [tokenizer.bos_id(), *tokens]
     return torch.tensor(tokens, dtype=torch.int, device=device).unsqueeze(0)
 
 
@@ -125,7 +125,7 @@ def prefill(model, x: torch.Tensor, input_pos: torch.Tensor, **sampling_kwargs) 
 def decode_n_tokens(model, max_new_tokens, input_toks, temperature=1.0, top_k=None):
     """Decode max_new_tokens tokens autoregressively (sequentially) from the model."""
     b, t = input_toks.size()
-    output_tokens = torch.zeros(b, t + max_new_tokens, dtype=torch.int, device=input_toks.device)
+    torch.zeros(b, t + max_new_tokens, dtype=torch.int, device=input_toks.device)
     for _ in range(max_new_tokens):
         logits, _ = model(input_toks)
         idx_next, _ = sample(logits, temperature, top_k)
@@ -151,7 +151,7 @@ def generate(model, tokenizer, prompt, max_new_tokens, temperature=1.0, top_k=No
         generated_tokens[0, idx] = idx_next
         outputs = model(generated_tokens[:, : idx + 1], input_pos[: idx + 1])
         logits = outputs["logits"]
-        idx_next, probs = sample(logits, temperature, top_k)
+        idx_next, _probs = sample(logits, temperature, top_k)
     decoded_str = tokenizer.decode(generated_tokens[0].tolist())
     return decoded_str
 

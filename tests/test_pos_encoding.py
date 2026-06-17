@@ -3,8 +3,9 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
-from dnn.modeling.pos_encoding import vanilla_positional_encoding
-from utils import seed_all
+
+from research.nn.layers.pos_encoding import vanilla_positional_encoding
+from research.utils import seed_all
 
 seed_all(42)
 

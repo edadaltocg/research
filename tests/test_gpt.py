@@ -2,8 +2,9 @@ from collections import OrderedDict
 
 import pysnooper
 import torch
-from gpt.model import GPT
 from transformers import GPT2LMHeadModel, GPT2Model, GPT2Tokenizer
+
+from research.llm.models.gpt import GPT
 
 
 def convert_gpt2_state_dict(state_dict: OrderedDict) -> OrderedDict:
@@ -14,7 +15,8 @@ def convert_gpt2_state_dict(state_dict: OrderedDict) -> OrderedDict:
     new_state_dict = OrderedDict()
     for k, v in state_dict.items():
         new_key = (
-            k.replace("transformer.", "")
+            k
+            .replace("transformer.", "")
             .replace("h.", "layers.")
             .replace("attn.c_attn", "attn.qkv_proj")
             .replace("attn.c_proj", "attn.out_proj")

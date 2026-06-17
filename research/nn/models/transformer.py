@@ -193,7 +193,7 @@ class TransformerDecoderLayer(nn.Module):
         dtype=None,
     ) -> None:
         super().__init__()
-        self.self_attn = self_attention
+        self.attn = self_attention
         self.cross_attn = cross_attention
         self.mlp = mlp
         self.norm1 = norm_layer1

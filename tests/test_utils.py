@@ -2,7 +2,8 @@ from pathlib import Path
 
 import torch
 from torch import nn
-from utils.utils import LoadPreTrainedModelWithLowMemoryContext
+
+from research.utils.utils import LoadPreTrainedModelWithLowMemoryContext
 
 dim = 1024
 
@@ -94,10 +95,10 @@ def test_load_pretrained_model_with_low_memory_context():
     model = model.float()
     assert model(x).device == torch.device("cpu")
 
-    assert all([p.device == torch.device("cpu") for p in model.parameters()])
-    assert all([p.device == torch.device("cpu") for p in model.buffers()])
-    assert all([p.dtype == torch.float32 for p in model.parameters()])
-    assert all([p.dtype == torch.float32 for p in model.buffers()])
+    assert all(p.device == torch.device("cpu") for p in model.parameters())
+    assert all(p.device == torch.device("cpu") for p in model.buffers())
+    assert all(p.dtype == torch.float32 for p in model.parameters())
+    assert all(p.dtype == torch.float32 for p in model.buffers())
 
 
 def test_minimal_load_pretrained_model_with_low_memory_context():
@@ -115,10 +116,10 @@ def test_minimal_load_pretrained_model_with_low_memory_context():
         print(f"{model.state_dict()=}")
         print(f"{w=}")
 
-    assert all([p.device == torch.device("cpu") for p in model.parameters()])
-    assert all([p.device == torch.device("cpu") for p in model.buffers()])
-    assert all([p.dtype == torch.float32 for p in model.parameters()])
-    assert all([p.dtype == torch.float32 for p in model.buffers()])
+    assert all(p.device == torch.device("cpu") for p in model.parameters())
+    assert all(p.device == torch.device("cpu") for p in model.buffers())
+    assert all(p.dtype == torch.float32 for p in model.parameters())
+    assert all(p.dtype == torch.float32 for p in model.buffers())
 
 
 def test_modified_model():
@@ -136,7 +137,7 @@ def test_modified_model():
         print(f"{model.state_dict()=}")
         print(f"{w=}")
 
-    assert all([p.device == torch.device("cpu") for p in model.parameters()])
-    assert all([p.device == torch.device("cpu") for p in model.buffers()])
-    assert all([p.dtype == torch.float32 for p in model.parameters()])
-    assert all([p.dtype == torch.float32 for p in model.buffers()])
+    assert all(p.device == torch.device("cpu") for p in model.parameters())
+    assert all(p.device == torch.device("cpu") for p in model.buffers())
+    assert all(p.dtype == torch.float32 for p in model.parameters())
+    assert all(p.dtype == torch.float32 for p in model.buffers())

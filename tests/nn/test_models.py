@@ -1,5 +1,4 @@
 import torch.nn.functional as F
-
 from research.nn.models.glm import LinearRegression
 
 from ..testdata import dummy

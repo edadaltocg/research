@@ -4,13 +4,13 @@ import time
 from typing import Any
 
 import torch
+from research.utils.logging import setup_logger
 from torch import Tensor
 from torchtune.modules import TransformerDecoder
 from tqdm import tqdm
 
 from projects.sc.inference import forward
 from research.llm.sample import sample
-from research.utils.logging import setup_logger
 
 log = logging.getLogger(__file__)
 setup_logger(logging.INFO)
@@ -153,15 +153,15 @@ def generate_lm_sc(
     logits_topk = torch.topk(generated_logits, k=1024, dim=-1).values
 
     # limit storage usage
-    return dict(
-        tokens=generated_tokens[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.int32),
-        logits=logits_topk[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.float16),
-        hidden=generated_h[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.float16),
-        prompt_len=prompt_len,
-        max_len=max_len,
-        temperature=temperature,
-        top_p=top_p,
-        top_k=top_k,
-        t_prefill=t_prefill,
-        t_total=t_total,
-    )
+    return {
+        "tokens": generated_tokens[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.int32),
+        "logits": logits_topk[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.float16),
+        "hidden": generated_h[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.float16),
+        "prompt_len": prompt_len,
+        "max_len": max_len,
+        "temperature": temperature,
+        "top_p": top_p,
+        "top_k": top_k,
+        "t_prefill": t_prefill,
+        "t_total": t_total,
+    }

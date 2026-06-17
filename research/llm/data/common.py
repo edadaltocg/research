@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -19,6 +20,8 @@ def get_dataset_offline(root=ROOT / "c4", split="train[:1%]"):
 
 
 class TextPretrainPartialDataset(Dataset):
+    dataset: Any
+
     def __init__(self, root: str | Path, split: str, key: str = "text") -> None:
         self.root = str(root)
         self.split = str(split)
@@ -26,7 +29,7 @@ class TextPretrainPartialDataset(Dataset):
         self.dataset = self.build_dataset()
         print(f"{self.dataset=}")
 
-    def build_dataset(self) -> Dataset:
+    def build_dataset(self) -> Any:
         return get_dataset_offline(self.root, self.split)
 
     def __getitem__(self, index: int) -> list[str]:
@@ -72,7 +75,7 @@ def write_tokenized_dataset(dest="output/datasets/mypile_tokenized"):
 
     def tokenizer_fn(text: list[str]):
         ids = tokenizer(text, padding=False, truncation=False)
-        ids = ids.input_ids + [eos_id]
+        ids = [*ids.input_ids, eos_id]
         return ids
 
     generator = map(tokenizer_fn, dataset)
@@ -128,7 +131,7 @@ class TokenizedPreTrainDataset(Dataset):
 
 
 class ConcatDatasetsWithProbabilities(Dataset):
-    def __init__(self, datasets: list[Dataset], probabilities: list[float]) -> None:
+    def __init__(self, datasets: list[Any], probabilities: list[float]) -> None:
         self.datasets = datasets
         self.probabilities = [p / sum(probabilities) for p in probabilities]
         self.cumulative_probabilities = np.cumsum(self.probabilities)

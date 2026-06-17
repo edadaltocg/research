@@ -17,7 +17,8 @@ def get_lr(it: int, lr_decay_iters: int, learning_rate: float, warmup_iters: int
     return min_lr + coeff * (learning_rate - min_lr)
 
 
-linear_warmup = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=150)
-cosine_decay = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, total)
-schedulers = [linear_warmup, cosine_decay]
-scheduler = torch.optim.lr_scheduler.ChainedScheduler(schedulers)
+def get_chained_scheduler(optimizer, total_iters):
+    linear_warmup = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=150)
+    cosine_decay = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, total_iters)
+    schedulers = [linear_warmup, cosine_decay]
+    return torch.optim.lr_scheduler.ChainedScheduler(schedulers)

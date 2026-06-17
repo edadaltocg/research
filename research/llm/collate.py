@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
@@ -40,7 +42,7 @@ def get_causal_mask_from_padding_mask(padding_mask: torch.Tensor, target_seq_len
         raise AssertionError("target_seq_len cannot be shorter than the sequence length of the padding mask.")
 
     mask = torch.tril(
-        torch.ones(seq_len, target_seq_len, device=padding_mask.device, dtype=bool),
+        torch.ones(seq_len, target_seq_len, device=padding_mask.device, dtype=torch.bool),
         diagonal=0,
     ).repeat(bsz, 1, 1)
     mask.narrow(2, 0, seq_len).mul_(padding_mask[:, None, :].expand(-1, seq_len, -1))
@@ -105,7 +107,7 @@ def left_pad_sequence(
                 [ 8,  9, 10, 11, 12]])
     """
     return pad_sequence(
-        map(lambda x: torch.flip(x, dims=[0]), sequences),
+        [torch.flip(x, dims=[0]) for x in sequences],
         batch_first=batch_first,
         padding_value=padding_value,
     ).flip(dims=[int(batch_first)])
@@ -114,7 +116,7 @@ def left_pad_sequence(
 def collate_self_consistency(
     batch,
     n_paths: int,
-) -> dict[str, Tensor | str]:
+) -> dict[str, Any]:
     collated = {}
     for k, v in batch[0].items():
         if isinstance(v, Tensor):
