@@ -3,7 +3,6 @@ default:
 
 # Initialize virtual environment and synchronize dependencies
 install:
-    uv venv
     uv sync --all-extras
 
 # Format and fix code
