@@ -19,3 +19,11 @@ lint:
 # Run tests
 test:
     uv run pytest -v -s tests/
+
+# Preview documentation locally
+docs-preview:
+    uv run mkdocs serve
+
+# Build static documentation files
+docs-build:
+    uv run mkdocs build
