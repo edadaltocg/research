@@ -2,6 +2,7 @@ import io
 import os
 import string
 from pathlib import Path
+from typing import Any
 
 import torch
 from sentencepiece import SentencePieceProcessor, SentencePieceTrainer
@@ -11,7 +12,9 @@ from transformers.modeling_utils import json
 class Tokenizer:
     def __init__(self, path) -> None:
         assert Path(path).exists(), f"{path} does not exist"
-        self._model = SentencePieceProcessor(path)
+        model_cls: Any = SentencePieceProcessor
+        self._model: Any = model_cls()
+        self._model.load(str(path))
         self.bos_id = self._model.bos_id()
         self.eos_id = self._model.eos_id()
         self.pad_id = self._model.pad_id()
@@ -57,7 +60,7 @@ class Tokenizer:
         string: str | list[str],
         bos: bool = True,
         eos: bool = False,
-        out_type=int,
+        out_type: Any = int,
         *args,
         **kwargs,
     ):
@@ -81,7 +84,8 @@ def train_sp_tokenizer_from_iterator(iterator, dest_path="output/tokenizers", pr
     ascii_chars = ascii_chars[:64]
     extra_chars = ascii_chars
     model = io.BytesIO()
-    SentencePieceTrainer.train(
+    trainer: Any = SentencePieceTrainer
+    trainer.train(
         sentence_iterator=iterator,
         model_writer=model,
         vocab_size=vocab_size,
@@ -98,7 +102,7 @@ def train_sp_tokenizer_from_iterator(iterator, dest_path="output/tokenizers", pr
     with open(f"{path}.model", "wb") as f:
         f.write(model.getvalue())
 
-    sp = SentencePieceProcessor()
+    sp: Any = SentencePieceProcessor()
     sp.load(f"{path}.model")
     # sp.set_vocabulary(whitespaces, 9999)
     # save vocab

@@ -7,7 +7,7 @@ from transformers import GPT2LMHeadModel, GPT2Model, GPT2Tokenizer
 from research.llm.models.gpt import GPT
 
 
-def convert_gpt2_state_dict(state_dict: OrderedDict) -> OrderedDict:
+def convert_gpt2_state_dict(state_dict: dict[str, torch.Tensor]) -> OrderedDict:
     # HF
     # 'transformer.wte.weight', 'transformer.wpe.weight', 'transformer.h.0.ln_1.weight', 'transformer.h.0.ln_1.bias', 'transformer.h.11.ln_1.weight', 'transformer.h.11.ln_1.bias', 'transformer.h.11.attn.c_attn.weight', 'transformer.h.11.attn.c_attn.bias', 'transformer.h.11.attn.c_proj.weight', 'transformer.h.11.attn.c_proj.bias', 'transformer.h.11.ln_2.weight', 'transformer.h.11.ln_2.bias', 'transformer.h.11.mlp.c_fc.weight', 'transformer.h.11.mlp.c_fc.bias', 'transformer.h.11.mlp.c_proj.weight', 'transformer.h.11.mlp.c_proj.bias', 'transformer.ln_f.weight', 'transformer.ln_f.bias', 'lm_head.weight'
     # This

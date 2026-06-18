@@ -19,7 +19,7 @@ seed_all(42)
 )
 def test_convert_from_pytorch_vit():
     config = vit_b_16_config
-    model = VisionTransformerEncoder(image_size=224, **config)
+    model = VisionTransformerEncoder(image_size=224, **config)  # type: ignore
     print("My keys", model.state_dict().keys())
     w_pretrained = torch.load("./weights/vit_b_16-c867db91.pth")
     print("Pretrained keys", w_pretrained.keys())

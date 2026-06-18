@@ -65,6 +65,7 @@ def write_tokenized_dataset(dest="output/datasets/mypile_tokenized"):
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
     tokenizer = AutoTokenizer.from_pretrained("output/weights/llama2-7b")
+    assert tokenizer is not None
     assert tokenizer.is_fast
     eos_tok = tokenizer.eos_token
     eos_id = tokenizer.eos_token_id

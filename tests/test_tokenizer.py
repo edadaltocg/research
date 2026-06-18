@@ -44,6 +44,7 @@ def test_sp_tokenizer():
     print(attn_mask)
 
     hf_tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    assert hf_tokenizer is not None
     hf_tokenizer.pad_token = "[PAD]"
     encoded = hf_tokenizer(list_of_texts, return_tensors="pt", padding=True)
     print(encoded)
@@ -63,6 +64,7 @@ def distrib_spawn(fn, *args):
     mp.spawn(fn, args=(WORLD_SIZE, args), nprocs=WORLD_SIZE, join=True)
     """
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    assert tokenizer is not None
     tokenizer.pad_token = tokenizer.eos_token
     encoded = tokenizer(code, return_tensors="pt", padding=True, truncation=True)
     print(encoded)

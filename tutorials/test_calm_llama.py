@@ -17,6 +17,7 @@ def main():
     model = model.to("cuda")
     model.eval()
 
+    assert tokenizer is not None
     prompt = "Hey, are you conscious? Can you talk to me?"
     inputs = tokenizer(prompt, return_tensors="pt")
     tokenizer("I'm not conscious, but I can talk to you.", return_tensors="pt")

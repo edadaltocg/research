@@ -644,11 +644,10 @@ def test_trainer(
         eval_forward = eval_forward_example
     else:
         model, tokenizer = prepare_calm_llama(num_layers=num_calm_layers)
+        layer_cls: set[type[torch.nn.Module]] = {LlamaDecoderLayer}
         auto_wrap_policy = partial(
             transformer_auto_wrap_policy,
-            transformer_layer_cls={
-                LlamaDecoderLayer,
-            },
+            transformer_layer_cls=layer_cls,
         )
         train_forward = train_forward_example
         eval_forward = eval_forward_example
@@ -779,11 +778,10 @@ def calm_trainer(
     head_type = experiment_idx_to_head_type[experiment_idx]
 
     model, _tokenizer = prepare_calm_llama(num_layers=num_calm_layers, head_type=head_type)
+    layer_cls: set[type[torch.nn.Module]] = {LlamaDecoderLayer}
     auto_wrap_policy = partial(
         transformer_auto_wrap_policy,
-        transformer_layer_cls={
-            LlamaDecoderLayer,
-        },
+        transformer_layer_cls=layer_cls,
     )
     train_forward = train_forward_example
     eval_forward = eval_forward_example

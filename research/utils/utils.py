@@ -3,6 +3,7 @@ import math
 import random
 import time
 from itertools import chain
+from typing import Any
 
 import numpy as np
 import torch
@@ -132,7 +133,8 @@ def num_parameters(module: nn.Module, requires_grad: bool | None = None) -> int:
         if requires_grad is None or p.requires_grad == requires_grad:
             if hasattr(p, "quant_state"):
                 # bitsandbytes 4bit layer support
-                total += math.prod(p.quant_state[1])
+                quant_state: Any = p.quant_state
+                total += math.prod(quant_state[1])
             else:
                 total += p.numel()
     return total

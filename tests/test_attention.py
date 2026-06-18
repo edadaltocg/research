@@ -122,6 +122,7 @@ def test_group_query_attention_with_rope_and_kv_cache():
         x = layer(x, pos, freqs_cis=freqs_cis_)
     assert x.size() == (batch_size, prompt_len, embed_dim)
 
+    assert layer.kv_cache is not None
     cache = layer.kv_cache.k
     print(cache)
 

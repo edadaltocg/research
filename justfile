@@ -13,7 +13,7 @@ fmt:
 # Lint code
 lint:
     uv run ruff check .
-    uv run ty check --exit-zero .
+    uv run ty check .
 
 # Run tests
 test:
