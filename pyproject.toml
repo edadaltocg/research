@@ -46,7 +46,7 @@ trainer = [
 
 [dependency-groups]
 dev = [
-  "pytest>=8.3.4,<9.0.0",
+  "pytest>=9.0.3,<10.0.0",
   "pytest-cov>=6.0.0,<7.0.0",
   "pytest-xdist>=3.6.1,<4.0.0",
   "ruff>=0.8.2,<1.0.0",
