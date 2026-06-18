@@ -9,7 +9,6 @@ import torch
 import torch.utils.benchmark as benchmark
 from PIL import Image
 from torch import Tensor, nn
-from torchvision.models.feature_extraction import create_feature_extractor, get_graph_node_names
 from tqdm import tqdm
 
 log = logging.getLogger(__name__)

@@ -1,3 +1,8 @@
+from torchvision.models.feature_extraction import (
+    create_feature_extractor,
+    get_graph_node_names,
+)
+
 from .distrib import (
     distrib_cleanup,
     distrib_setup,
@@ -12,9 +17,7 @@ from .distrib import (
 from .utils import (
     LoadPreTrainedModelWithLowMemoryContext,
     benchmark_torch_function_in_microseconds,
-    create_feature_extractor,
     dummy_image,
-    get_graph_node_names,
     num_trainable_parameters,
     seed_all,
 )

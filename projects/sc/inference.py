@@ -8,10 +8,11 @@ import torchtune
 import torchtune.models.llama3
 import torchtune.models.llama3_2
 from omegaconf import OmegaConf
-from research.utils.utils import safe_torch_load
 from torchtune import config, generation, training, utils
 from torchtune.models import convert_weights
 from torchtune.modules import TransformerDecoder
+
+from research.utils.utils import safe_torch_load
 
 logger = utils.get_logger("DEBUG")
 
