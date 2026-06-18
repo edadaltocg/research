@@ -4,6 +4,8 @@ import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, cast
 
 import torch
 import torch.optim.lr_scheduler
@@ -33,7 +35,8 @@ class TrainerSingleDevice(TrainerBase):
         self.model = self.model.to_empty(device=self.device)
         self.model = self.model.apply(lambda x: init_weights(x, self.init_weights))
         if self.compile_model:
-            self.model = torch.compile(self.model)
+            model_compiled: Any = torch.compile(self.model)
+            self.model = model_compiled
         log.info("Model setup done")
 
     def _train_one_step(self, batch):
@@ -41,6 +44,7 @@ class TrainerSingleDevice(TrainerBase):
         inputs, targets = move_to_device(batch, self.device)
 
         outputs = self.model(inputs)
+        assert self.criterion is not None
         loss = self.criterion(outputs, targets)
         loss = loss / self.accumulation_steps
         loss.backward()
@@ -56,9 +60,10 @@ class TrainerSingleDevice(TrainerBase):
         for epoch in range(self._epoch, self.num_epochs):
             self.epoch = epoch
 
-            if self.train_loader:
-                bpbar = tqdm(total=len(self.train_loader), unit="batch", position=1, colour="blue")
-                for batch_idx, batch in enumerate(self.train_loader):
+            train_loader = self.train_loader
+            if train_loader is not None:
+                bpbar = tqdm(total=len(train_loader), unit="batch", position=1, colour="blue")
+                for batch_idx, batch in enumerate(train_loader):
                     self._global_step += 1
                     loss = self._train_one_step(batch)
 
@@ -66,11 +71,12 @@ class TrainerSingleDevice(TrainerBase):
                         log.error("Loss is nan")
                         sys.exit(1)
 
-                    if (batch_idx + 1) % self.accumulation_steps == 0 or batch_idx == len(self.train_loader) - 1:
+                    if (batch_idx + 1) % self.accumulation_steps == 0 or batch_idx == len(train_loader) - 1:
                         if self.gradient_clip_val is not None:
                             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_val)
 
                         log.debug("Optimizer step")
+                        assert self.optimizer is not None
                         self.optimizer.step()
                         self.optimizer.zero_grad()
 
@@ -120,6 +126,7 @@ class TrainerSingleDevice(TrainerBase):
 
         with torch.no_grad():
             outputs = self.model(inputs)
+            assert self.criterion is not None
             loss = self.criterion(outputs, targets)
 
         return loss
@@ -145,12 +152,13 @@ class TrainerSingleDevice(TrainerBase):
         return avg_loss
 
     def load_checkpoint(self):
+        checkpoint_dir = cast(Path, self.checkpoint_dir)
         if self.checkpoint_path:
             checkpoint_path = self.checkpoint_path
         elif self.resume_from_checkpoint:
-            checkpoint_files = list(self.checkpoint_dir.glob(f"{self.checkpoint_prefix}_step_*.ckpt"))
+            checkpoint_files = list(checkpoint_dir.glob(f"{self.checkpoint_prefix}_step_*.ckpt"))
             if not checkpoint_files:
-                log.info(f"No checkpoints found in {self.checkpoint_dir} to resume from. Starting from scratch.")
+                log.info(f"No checkpoints found in {checkpoint_dir} to resume from. Starting from scratch.")
                 return
             latest_checkpoint = max(checkpoint_files, key=lambda x: int(x.stem.split("_step_")[-1]))
             checkpoint_path = latest_checkpoint
@@ -160,6 +168,7 @@ class TrainerSingleDevice(TrainerBase):
         log.info(f"Resuming from checkpoint: {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint["model_state_dict"])
+        assert self.optimizer is not None
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         if self.lr_scheduler:
             self.lr_scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
@@ -169,13 +178,15 @@ class TrainerSingleDevice(TrainerBase):
         self.metrics = checkpoint.get("metrics", defaultdict(list))  # load metrics if available
 
     def save_checkpoint(self, checkpoint_path=None, best=False, last=False):
+        checkpoint_dir = cast(Path, self.checkpoint_dir)
         if not checkpoint_path:
-            checkpoint_path = self.checkpoint_dir / f"{self.checkpoint_prefix}_step_{self._global_step}.ckpt"
+            checkpoint_path = checkpoint_dir / f"{self.checkpoint_prefix}_step_{self._global_step}.ckpt"
         if best:
-            checkpoint_path = self.checkpoint_dir / f"{self.checkpoint_prefix}_best.ckpt"
+            checkpoint_path = checkpoint_dir / f"{self.checkpoint_prefix}_best.ckpt"
         if last:
-            checkpoint_path = self.checkpoint_dir / f"{self.checkpoint_prefix}_last.ckpt"
+            checkpoint_path = checkpoint_dir / f"{self.checkpoint_prefix}_last.ckpt"
 
+        assert self.optimizer is not None
         checkpoint = {
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
@@ -193,15 +204,16 @@ class TrainerSingleDevice(TrainerBase):
         log.info(f"Checkpoint saved to: {checkpoint_path}")
 
         # Clean up old checkpoints
-        checkpoint_files = list(self.checkpoint_dir.glob(f"{self.checkpoint_prefix}_step_*.ckpt"))
+        checkpoint_files = list(checkpoint_dir.glob(f"{self.checkpoint_prefix}_step_*.ckpt"))
         checkpoint_files.sort(key=lambda x: int(x.stem.split("_step_")[-1]), reverse=True)
         for file in checkpoint_files[self.num_checkpoints :]:
             os.remove(file)
         log.info(f"Cleaned up old checkpoints, keeping last {self.num_checkpoints} checkpoints.")
 
     def export_model(self, name="model.pt"):
-        torch.save(self.model.state_dict(), self.output_dir / name)
-        log.info(f"Exported model to: {self.output_dir / name}")
+        output_dir = cast(Path, self.output_dir)
+        torch.save(self.model.state_dict(), output_dir / name)
+        log.info(f"Exported model to: {output_dir / name}")
 
     def tune(self):
         max_batch_size = self.batch_size
@@ -218,8 +230,10 @@ class TrainerSingleDevice(TrainerBase):
                 inputs = move_to_device(batch, self.device)
                 targets = move_to_device(batch, self.device)
                 outputs = self.model(inputs)
+                assert self.criterion is not None
                 loss = self.criterion(outputs, targets)
 
+                assert self.optimizer is not None
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
@@ -227,14 +241,14 @@ class TrainerSingleDevice(TrainerBase):
                 max_batch_size *= 2
                 self.train_logger.logger.info(f"Trying batch size: {max_batch_size}")
             except RuntimeError as e:
-                if "out of memory" in e:  # no effect on CPU
+                if "out of memory" in str(e):  # no effect on CPU
                     max_batch_size = max_batch_size // 2
                     self.train_logger.logger.info(
                         f"Out of memory (CPU RAM) at batch size {max_batch_size * 2}, reducing to {max_batch_size}"
                     )
                     break
                 else:
-                    raise e
+                    raise
 
         self.batch_size = max_batch_size
 
@@ -271,7 +285,8 @@ class TrainerSingleDevice(TrainerBase):
 
     def setup_profiler(self):
         profiling_schedule = torch.profiler.schedule(wait=1, warmup=5, active=3, repeat=1)
-        on_trace_ready = torch.profiler.tensorboard_trace_handler(str(self.log_dir / "tb_trace"))
+        log_dir = cast(Path, self.log_dir)
+        on_trace_ready = torch.profiler.tensorboard_trace_handler(str(log_dir / "tb_trace"))
         activities = [
             ProfilerActivity.CPU,
             ProfilerActivity.CUDA,
@@ -291,11 +306,14 @@ class TrainerSingleDevice(TrainerBase):
         pbar = tqdm(total=10, unit="epoch", position=0, colour="magenta")
         prof = self.setup_profiler()
         prof.start()
-        for batch_idx, batch in enumerate(self.train_loader):
+        train_loader = self.train_loader
+        assert train_loader is not None
+        for batch_idx, batch in enumerate(train_loader):
             if batch_idx > 10:  # Profile for a limited number of steps
                 break
             inputs, targets = move_to_device(batch, self.device)
             outputs = self.model(inputs)
+            assert self.criterion is not None
             loss = self.criterion(outputs, targets)
             loss.backward()
             self.optimizer.step()

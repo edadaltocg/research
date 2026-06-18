@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 from torch import Tensor
 
@@ -9,7 +7,7 @@ def greedy_sample(logits: Tensor):
 
 
 def top_p_probs(probs: Tensor, p: float):
-    probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True)
+    probs_sort, _probs_idx = torch.sort(probs, dim=-1, descending=True)
     probs_sum = torch.cumsum(probs_sort, dim=-1)
     mask = probs_sum - probs_sort > p
     probs_sort[mask] = 0.0
@@ -31,8 +29,8 @@ def sample(
     logits: Tensor,
     *,
     temperature: float = 1.0,
-    top_k: Optional[int] = None,
-    top_p: Optional[float] = None,
+    top_k: int | None = None,
+    top_p: float | None = None,
 ) -> torch.Tensor:
     # scale the logits based on temperature
     logits = logits / max(temperature, 1e-5)

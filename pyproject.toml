@@ -1,105 +1,84 @@
 [project]
 name = "research"
 version = "0.1.0"
-description = "Ed's from-zero research monorepo. For AI learning purposes."
+description = "Ed's From-Zero research monorepo. For AI learning purposes."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { file = "LICENSE" }
 dependencies = [
-  "datasets",
-  "safetensors",
-  "einops",
-  "fire",
-  "matplotlib",
-  "psutil",
-  "seaborn",
-  "tiktoken",
-  "torcheval",
-  "pydantic",
-  "torchinfo>=1.8.0",
+  "datasets>=3.1.0,<4.0.0",
+  "safetensors>=0.4.5,<1.0.0",
+  "einops>=0.8.0,<1.0.0",
+  "fire>=0.7.0,<1.0.0",
+  "matplotlib>=3.9.3,<4.0.0",
+  "psutil>=6.1.0,<7.0.0",
+  "seaborn>=0.13.2,<1.0.0",
+  "tiktoken>=0.8.0,<1.0.0",
+  "torcheval>=0.0.7,<1.0.0",
+  "pydantic>=2.10.4,<3.0.0",
+  "torchinfo>=1.8.0,<2.0.0",
+  "torch>=2.2.0,<3.0.0",
+  "torchvision>=0.17.0,<1.0.0",
+  "torchaudio>=2.2.0,<3.0.0",
+  "jax>=0.10.1",
+  "transformers>=5.12.1",
+  "sentencepiece>=0.2.1",
 ]
-
-[tool.setuptools]
-py-modules = ["research"]
-
 [project.optional-dependencies]
-dev = ["ruff", "pytest", "pytest-cov", "pytest-xdist", "mypy"]
 docs = [
-  "mkdocs-material>=9.5.47",
-  "mkdocs>=1.6.0",
-  "mkdocstrings>=0.27.0",
-  "mkdocstrings-python>=1.12.2",
-  "mkdocs-gen-files>=0.5.0",
-  "mkdocs-section-index>=0.3.9",
+  "mkdocs-material>=9.5.47,<10.0.0",
+  "properdocs>=1.6.7,<2.0.0",
+  "mkdocstrings>=0.27.0,<1.0.0",
+  "mkdocstrings-python>=1.12.2,<2.0.0",
+  "mkdocs-gen-files>=0.5.0,<1.0.0",
+  "mkdocs-section-index>=0.3.9,<1.0.0",
+  "mkdocs-shadcn",
 ]
 vision = [
-    "albumentations>=2.0.4",
-    "opencv-python>=4.11.0.86",
-    "timm>=1.0.14",
+    "albumentations>=2.0.4,<3.0.0",
+    "opencv-python>=4.11.0.86,<5.0.0",
+    "timm>=1.0.14,<2.0.0",
 ]
 trainer = [
-    "tensorboard>=2.19.0",
-    "torch-tb-profiler>=0.4.3",
+    "tensorboard>=2.19.0,<3.0.0",
+    "torch-tb-profiler>=0.4.3,<1.0.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3.4,<9.0.0",
+  "pytest-cov>=6.0.0,<7.0.0",
+  "pytest-xdist>=3.6.1,<4.0.0",
+  "ruff>=0.8.2,<1.0.0",
+  "ty",
+  "pysnooper>=1.2.3,<2.0.0",
+  "research[docs,vision,trainer]",
 ]
 
 [build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv-build"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "research"
+module-root = ""
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-[tool.ruff]
-target-version = "py311"
-line-length = 120
-fix = true
-
-[tool.ruff.lint]
-select = [
-  # flake8-2020
-  "YTT",
-  # flake8-bandit
-  "S",
-  # flake8-bugbear
-  "B",
-  # flake8-builtins
-  "A",
-  # flake8-comprehensions
-  "C4",
-  # flake8-debugger
-  "T10",
-  # flake8-simplify
-  "SIM",
-  # isort
-  "I",
-  # mccabe
-  "C90",
-  # pycodestyle
-  "E",
-  "W",
-  # pyflakes
-  "F",
-  # pygrep-hooks
-  "PGH",
-  # pyupgrade
-  "UP",
-  # ruff
-  "RUF",
-  # tryceratops
-  "TRY",
-]
-ignore = [
-  # LineTooLong
-  "E501",
-  # DoNotAssignLambda
-  "E731",
-]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]
-
-[tool.ruff.format]
-preview = true
-
 [tool.coverage.report]
 skip_empty = true
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
+[tool.uv.workspace]
+members = ["projects/*"]
+
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+possibly-unresolved-reference = "ignore"

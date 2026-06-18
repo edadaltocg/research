@@ -1,9 +1,7 @@
+import logging
 from functools import partial
 
-from torch import Tensor, nn
-
-
-import logging
+from torch import nn
 
 log = logging.getLogger(__file__)
 

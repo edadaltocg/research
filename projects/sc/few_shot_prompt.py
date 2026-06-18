@@ -1,17 +1,17 @@
-import sys
 import logging
 import random
+from typing import Any
 
 import torch
 from datasets import load_dataset
 from omegaconf import DictConfig, OmegaConf
+from research.utils.logging import setup_logger
 from torchtune import config
 from torchtune.data import Message
 from torchtune.modules.tokenizers import ModelTokenizer
 from tqdm import tqdm
 
 from projects.sc.download import CACHE_DIR
-from research.utils.logging import setup_logger
 
 log = logging.getLogger(__file__)
 
@@ -26,17 +26,20 @@ def gsm8k(cfg: DictConfig):
 
     log.debug("Loading dataset")
     ds = load_dataset("openai/gsm8k", "main", cache_dir=CACHE_DIR)
-    q = ds["test"]["question"][0]
-    a = ds["test"]["answer"][0]
+    ds_any: Any = ds
+    test_ds = ds_any["test"]
+    train_ds = ds_any["train"]
+    q = test_ds["question"][0]
+    a = test_ds["answer"][0]
     log.debug(f"{ds=}")
     log.debug(f"\n{q=}\n{a=}")
 
     # Building few shots
     log.debug("Building few shots")
     n_shots = cfg.get("n_shots", 8)
-    random_shots = [random.randrange(0, len(ds["train"])) for _ in range(n_shots)]
-    qs = [ds["train"]["question"][r] for r in random_shots]
-    ans = [ds["train"]["answer"][r] for r in random_shots]
+    random_shots = [random.randrange(0, len(train_ds)) for _ in range(n_shots)]
+    qs = [train_ds["question"][r] for r in random_shots]
+    ans = [train_ds["answer"][r] for r in random_shots]
     few_shot = [
         Message(
             role="system",
@@ -44,7 +47,7 @@ def gsm8k(cfg: DictConfig):
         )
     ]
     before = cfg.get("before", False)
-    for q, a in zip(qs, ans):
+    for q, a in zip(qs, ans, strict=False):
         aa = a.split("\n#### ")
         if before:
             str_a = "The answer is: " + aa[1].strip() + ".\n" + aa[0].strip()
@@ -58,11 +61,11 @@ def gsm8k(cfg: DictConfig):
     # Tokenizing dataset
     log.debug("Tokenizing dataset")
     dataset = []
-    total = len(ds["test"])
+    total = len(test_ds)
     pbar = tqdm(total=total, desc="Tokenizing dataset")
     for i in range(total):
-        q = ds["test"]["question"][i]
-        a = ds["test"]["answer"][i]
+        q = test_ds["question"][i]
+        a = test_ds["answer"][i]
         prompt = [*few_shot]
         prompt.append(Message(role="user", content=q))
         tokens, mask = tokenizer.tokenize_messages(prompt)

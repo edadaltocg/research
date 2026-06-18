@@ -32,7 +32,7 @@ def fsdp_trainer(
     get_train_dataset: Callable[[], torch.utils.data.Dataset],
     get_eval_dataset: Callable[[], torch.utils.data.Dataset],
     get_optimizer: Callable[[Iterator[nn.Parameter]], optim.Optimizer],
-    get_lr_scheduler: Callable[[optim.Optimizer, Any], Any],
+    get_lr_scheduler: Callable[..., Any],
     get_loss: Callable[[nn.Module, dict[str, Tensor]], Tensor],
     gradient_accumulation_steps: int = 1,
     num_epochs: int = 3,
@@ -102,6 +102,22 @@ def fsdp_trainer(
     init_start_event = torch.cuda.Event(enable_timing=True)
     init_end_event = torch.cuda.Event(enable_timing=True)
 
+    bfSixteen = MixedPrecision(
+        param_dtype=torch.bfloat16,
+        reduce_dtype=torch.bfloat16,
+        buffer_dtype=torch.bfloat16,
+    )
+    fpSixteen = MixedPrecision(
+        param_dtype=torch.float16,
+        reduce_dtype=torch.float16,
+        buffer_dtype=torch.float16,
+    )
+    fp32_policy = MixedPrecision(
+        param_dtype=torch.float32,
+        reduce_dtype=torch.float32,
+        buffer_dtype=torch.float32,
+    )
+
     # Model related setup
     if utils.is_bf16_ready() and mixed_precision:
         mp_policy = bfSixteen
@@ -114,7 +130,7 @@ def fsdp_trainer(
         precision = torch.float32
 
     utils.print_rank0(f"Using mixed precision policy: {mp_policy}")
-    model = get_model()
+    model: Any = get_model()
     model = FSDP(
         model,
         # cpu_offload=CPUOffload.AUTO,
@@ -128,7 +144,8 @@ def fsdp_trainer(
 
     # Optimizer related setup
     optimizer = get_optimizer(model.parameters())
-    model = torch.compile(model)
+    compiled_model: Any = torch.compile(model)
+    model = compiled_model
     if num_warmup_steps is not None:
         scheduler = get_lr_scheduler(optimizer, max_steps, num_warmup_steps)
     else:
@@ -167,8 +184,8 @@ def fsdp_trainer(
             train_loss = torch.zeros(2, device=rank)
             for batch in train_loader:
                 model.train()
-                k0 = list(batch.keys())[0]
-                for key in batch.keys():
+                k0 = next(iter(batch.keys()))
+                for key in batch:
                     batch[key] = batch[key].to(rank)
                 loss = get_loss(model, batch) / gradient_accumulation_steps
                 loss.backward()
@@ -194,8 +211,8 @@ def fsdp_trainer(
                     model.eval()
                     eval_loss = torch.zeros(2, device=rank)
                     for batch in eval_loader:
-                        k0 = list(batch.keys())[0]
-                        for key in batch.keys():
+                        k0 = next(iter(batch.keys()))
+                        for key in batch:
                             batch[key] = batch[key].to(rank)
                         with torch.no_grad():
                             loss = get_loss(model, batch)
@@ -232,7 +249,7 @@ def fsdp_trainer(
                         torch.save(best_cfg, dest_path / f"{model_prefix}-best-cfg.pt")
 
                 # Checkpointing
-                if local_step % checkpoint_every == 0 or (local_step == 1 and False):
+                if local_step % checkpoint_every == 0 or (False):
                     with FSDP.state_dict_type(
                         model,
                         StateDictType.FULL_STATE_DICT,
@@ -258,12 +275,10 @@ def fsdp_trainer(
                 # Update progress bar
                 if rank == 0:
                     pbar.update(1)
-                    pbar.set_postfix(
-                        dict(
-                            train_loss=tracker["train_loss"][-1],
-                            eval_loss=tracker["eval_loss"][-1] if "eval_loss" in tracker else "-",
-                        )
-                    )
+                    pbar.set_postfix({
+                        "train_loss": tracker["train_loss"][-1],
+                        "eval_loss": tracker["eval_loss"][-1] if "eval_loss" in tracker else "-",
+                    })
 
     init_end_event.record(torch.cuda.current_stream())
 

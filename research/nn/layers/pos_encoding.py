@@ -15,6 +15,8 @@ class FixedPositionalEncoding(nn.Module):
 
 
 class VanillaPositionalEncoding(nn.Module):
+    pe: Tensor
+
     def __init__(self, hidden_dim: int, max_len: int = 1024) -> None:
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -30,7 +32,7 @@ class VanillaPositionalEncoding(nn.Module):
         self.register_buffer("pe", pe)
 
     def forward(self, x: Tensor) -> Tensor:
-        b, s, d = x.size()
+        _b, _s, _d = x.size()
         return self.pe
         # return self.pe[:, :s, :] non traceable
 

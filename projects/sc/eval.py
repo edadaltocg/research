@@ -1,8 +1,7 @@
 import re
-from typing import List, Optional
 
 
-def _regex_function(text: str, pattern: str, group_select: Optional[int] = None) -> Optional[str]:
+def _regex_function(text: str, pattern: str, group_select: int | None = None) -> str | None:
     match = re.search(pattern, text)
     if match:
         if group_select is not None:
@@ -11,7 +10,7 @@ def _regex_function(text: str, pattern: str, group_select: Optional[int] = None)
     return None
 
 
-def _take_first(matches: List[Optional[str]]) -> Optional[str]:
+def _take_first(matches: list[str | None]) -> str | None:
     for match in matches:
         if match:
             return match
@@ -32,7 +31,7 @@ def strict_match(text: str) -> str:
     return first
 
 
-def flexible_extract(text: str) -> Optional[str]:
+def flexible_extract(text: str) -> str | None:
     # Define the pattern for flexible-extract
     pattern = r"(-?[$0-9\.,]{2,})|(-?[0-9]+)"
 

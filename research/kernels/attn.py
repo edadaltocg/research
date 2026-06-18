@@ -1,6 +1,5 @@
-import triton
-import triton.language as tl
 import torch
+import triton
 
 
 @triton.jit
@@ -9,19 +8,16 @@ def _attn_fwd(
     K,
     V,
 ):
-    index_batch = ...
-    index_head = ...
-    qkv_offset = ...
     return
 
 
 class TritonMultiHeadAttention(torch.autograd.Function):
     @staticmethod
     def forward(ctx, Q, K, V, causal, softmax_scale):
-        BATCH_SIZE, NUM_HEADS, SEQ_LEN, HEAD_DIM = Q.shape
+        BATCH_SIZE, NUM_HEADS, _SEQ_LEN, _HEAD_DIM = Q.shape
 
-        O = torch.empty_like(Q)
-        grid = lambda args: (
+        torch.empty_like(Q)
+        lambda args: (
             triton.cdiv(),
             BATCH_SIZE * NUM_HEADS,
             1,  # z in the CUDA launch grid

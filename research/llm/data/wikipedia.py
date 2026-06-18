@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Any
 
 from datasets import load_dataset
 
@@ -13,11 +14,13 @@ Dataset({
 
 def get_dataset_online(limit="1%", split="train", dest="output/datasets/wikipedia"):
     split = f"{split}[:{limit}]"
-    dataset = load_dataset(
+    cpu_count = os.cpu_count()
+    num_proc = cpu_count - 1 if cpu_count is not None else 1
+    dataset: Any = load_dataset(
         "wikipedia",
         "20220301.en",
         split=split,
-        num_proc=os.cpu_count() - 1,
+        num_proc=num_proc,
         trust_remote_code=True,
     )
     dest = Path(dest)

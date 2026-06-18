@@ -1,16 +1,15 @@
-from collections import defaultdict
-import os
-from typing import Any
-import yaml
+import time
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-import time
+from typing import Any
 
 import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler
 import torch.utils.data
+import yaml
 from torch.utils.data import DataLoader, Subset
 
 from research.trainer.logger import TrainerLogger
@@ -190,6 +189,6 @@ class TrainerBase(ABC):
         with open(config_file_path) as file:
             config_dict = yaml.safe_load(file)
 
-        optimizer_config = config_dict.pop("optimizer")
-        scheduler_config = config_dict.pop("scheduler")
-        criterion_config = config_dict.pop("criterion")
+        config_dict.pop("optimizer")
+        config_dict.pop("scheduler")
+        config_dict.pop("criterion")

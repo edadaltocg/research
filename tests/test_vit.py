@@ -1,18 +1,25 @@
+import os
+
+import pytest
 import torch
 import torchvision
-from utils import create_feature_extractor, get_graph_node_names, seed_all
-from vit.model import (
+
+from research.utils import create_feature_extractor, get_graph_node_names, seed_all
+from research.vision.vit.config import vit_b_16_config
+from research.vision.vit.model import (
     VisionTransformerEncoder,
     convert_from_pytorch_vit,
-    vit_b_16_config,
 )
 
 seed_all(42)
 
 
+@pytest.mark.skipif(
+    not os.path.exists("./weights/vit_b_16-c867db91.pth"), reason="Pre-trained ViT weights are not downloaded"
+)
 def test_convert_from_pytorch_vit():
     config = vit_b_16_config
-    model = VisionTransformerEncoder(image_size=224, **config)
+    model = VisionTransformerEncoder(image_size=224, **config)  # type: ignore
     print("My keys", model.state_dict().keys())
     w_pretrained = torch.load("./weights/vit_b_16-c867db91.pth")
     print("Pretrained keys", w_pretrained.keys())
@@ -33,7 +40,7 @@ def test_convert_from_pytorch_vit():
     model.load_state_dict(w_pretrained)
     model.eval()
 
-    train_nodes, eval_nodes = get_graph_node_names(model)
+    _train_nodes, eval_nodes = get_graph_node_names(model)
 
     print("My nodes", my_eval_nodes)
     print("Torch nodes", eval_nodes)

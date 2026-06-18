@@ -1,5 +1,8 @@
-from torch import nn
+from typing import Literal
+
+import torch
 import torch.nn.functional as F
+from torch import nn
 
 
 class FocalLoss(nn.Module):
@@ -13,7 +16,12 @@ class FocalLoss(nn.Module):
         self.weights = weights
         self.gamma = gamma
         self.reduction = reduction
-        self._reduction_op = reduction_ops[reduction]
+        if reduction == "mean":
+            self._reduction_op = torch.mean
+        elif reduction == "sum":
+            self._reduction_op = torch.sum
+        else:
+            self._reduction_op = lambda x: x
 
     def forward(self, inputs, targets):
         # Apply softmax to get probabilities
@@ -31,3 +39,5 @@ class FocalLoss(nn.Module):
         if self.weights is not None:
             alpha = self.weights[targets]
             focal_loss = alpha * focal_loss
+
+        return self._reduction_op(focal_loss)

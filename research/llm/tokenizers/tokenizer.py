@@ -2,6 +2,7 @@ import io
 import os
 import string
 from pathlib import Path
+from typing import Any
 
 import torch
 from sentencepiece import SentencePieceProcessor, SentencePieceTrainer
@@ -11,7 +12,9 @@ from transformers.modeling_utils import json
 class Tokenizer:
     def __init__(self, path) -> None:
         assert Path(path).exists(), f"{path} does not exist"
-        self._model = SentencePieceProcessor(path)  # type: ignore
+        model_cls: Any = SentencePieceProcessor
+        self._model: Any = model_cls()
+        self._model.load(str(path))
         self.bos_id = self._model.bos_id()
         self.eos_id = self._model.eos_id()
         self.pad_id = self._model.pad_id()
@@ -22,21 +25,17 @@ class Tokenizer:
         self.unk_token = "<unk>"
         self.pad_token = "<pad>"
 
-    def encode(
-        self, string: str | list[str], bos: bool = True, eos: bool = False, max_len=None
-    ) -> torch.Tensor:
+    def encode(self, string: str | list[str], bos: bool = True, eos: bool = False, max_len=None) -> torch.Tensor:
         if isinstance(string, str):
             return self.batch_encode([string], bos=bos, eos=eos, max_len=max_len)[0]
         return self.batch_encode(string, bos=bos, eos=eos, max_len=max_len)
 
-    def batch_encode(
-        self, strings: list[str], bos=True, eos=False, max_len=None
-    ) -> torch.Tensor:
-        tokens = self._model.encode(strings, out_type=int)  # type: ignore
+    def batch_encode(self, strings: list[str], bos=True, eos=False, max_len=None) -> torch.Tensor:
+        tokens = self._model.encode(strings, out_type=int)
         if bos:
-            tokens = [[self.bos_id] + t for t in tokens]
+            tokens = [[self.bos_id, *t] for t in tokens]
         if eos:
-            tokens = [t + [self.eos_id] for t in tokens]
+            tokens = [[*t, self.eos_id] for t in tokens]
         if max_len is not None:
             tokens = [t[:max_len] for t in tokens]
             tokens = [t + [self.pad_id] * (max_len - len(t)) for t in tokens]
@@ -48,7 +47,7 @@ class Tokenizer:
 
     def decode(self, tensor: torch.Tensor) -> str | list[str]:
         tokens = tensor.tolist()
-        return self._model.decode(tokens)  # type: ignore
+        return self._model.decode(tokens)
 
     def batch_decode(self, tensor: torch.Tensor) -> str | list[str]:
         return self.decode(tensor)
@@ -61,33 +60,32 @@ class Tokenizer:
         string: str | list[str],
         bos: bool = True,
         eos: bool = False,
-        out_type=int,
+        out_type: Any = int,
         *args,
         **kwargs,
     ):
-        tokens = self._model.encode(string, out_type=out_type, *args, **kwargs)  # type: ignore
+        tokens = self._model.encode(string, out_type=out_type, *args, **kwargs)
         if isinstance(string, str) and bos:
-            tokens = [self.bos_id] + tokens
+            tokens = [self.bos_id, *tokens]
         elif isinstance(string, list) and bos:
-            tokens = [[self.bos_id] + t for t in tokens]
+            tokens = [[self.bos_id, *t] for t in tokens]
         if isinstance(string, str) and eos:
-            tokens = tokens + [self.eos_id]
+            tokens = [*tokens, self.eos_id]
         elif isinstance(string, list) and eos:
-            tokens = [t + [self.eos_id] for t in tokens]
+            tokens = [[*t, self.eos_id] for t in tokens]
         return tokens
 
 
-def train_sp_tokenizer_from_iterator(
-    iterator, dest_path="output/tokenizers", prefix="sp", vocab_size=32768
-):
+def train_sp_tokenizer_from_iterator(iterator, dest_path="output/tokenizers", prefix="sp", vocab_size=32768):
     path = os.path.join(dest_path, f"{prefix}")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    ascii_chars = [c for c in string.printable]
+    ascii_chars = list(string.printable)
     # filter out problematic ones
     ascii_chars = ascii_chars[:64]
     extra_chars = ascii_chars
     model = io.BytesIO()
-    SentencePieceTrainer.train(  # type: ignore
+    trainer: Any = SentencePieceTrainer
+    trainer.train(
         sentence_iterator=iterator,
         model_writer=model,
         vocab_size=vocab_size,
@@ -104,8 +102,8 @@ def train_sp_tokenizer_from_iterator(
     with open(f"{path}.model", "wb") as f:
         f.write(model.getvalue())
 
-    sp = SentencePieceProcessor()
-    sp.load(f"{path}.model")  # type: ignore
+    sp: Any = SentencePieceProcessor()
+    sp.load(f"{path}.model")
     # sp.set_vocabulary(whitespaces, 9999)
     # save vocab
     vocab = {sp.id_to_piece(i): i for i in range(sp.get_piece_size())}

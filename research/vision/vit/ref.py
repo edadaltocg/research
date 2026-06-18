@@ -1,17 +1,18 @@
 """Finetuned ViT models for CIFAR10, CIFAR100, and SVHN datasets."""
 
+from typing import Any
+
 import timm
 import timm.models
 import torch
 import torch.nn as nn
-from timm.models import register_model as timm_register_model
-
 from detectors.models.utils import ModelDefaultConfig, hf_hub_url_template
+from timm.models import register_model as timm_register_model
 
 
 def _cfg(url, architecture: str, **kwargs):
     model = timm.create_model(architecture, pretrained=False)
-    base_cfg = model.default_cfg
+    base_cfg: Any = model.default_cfg
     num_classes = kwargs.pop("num_classes", 10)
     # replace base cfg with new arguments
     base_cfg.update(kwargs)
@@ -39,7 +40,7 @@ default_cfgs = {
 
 
 def _create_vit_ft(variant, pretrained=False, **kwargs):
-    default_cfg = default_cfgs[variant]
+    default_cfg: Any = default_cfgs[variant]
 
     # load timm model
     model = timm.create_model(default_cfg["architecture"], pretrained=not pretrained)
@@ -47,7 +48,8 @@ def _create_vit_ft(variant, pretrained=False, **kwargs):
     model.default_cfg = default_cfg
 
     # override model
-    model.head = nn.Linear(model.head.in_features, default_cfg["num_classes"])
+    head: Any = model.head
+    model.head = nn.Linear(head.in_features, default_cfg["num_classes"])
 
     if pretrained:
         model.load_state_dict(

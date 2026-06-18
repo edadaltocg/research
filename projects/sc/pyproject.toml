@@ -1,0 +1,16 @@
+[project]
+name = "sc"
+version = "0.1.0"
+description = "Speculative Decoding evaluate/inference"
+requires-python = ">=3.12"
+dependencies = [
+    "research",
+    "torch",
+    "datasets",
+    "omegaconf",
+    "torchtune",
+    "tqdm",
+]
+
+[tool.uv.sources]
+research = { workspace = true }

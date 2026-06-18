@@ -3,6 +3,7 @@ import gc
 import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import regex
@@ -10,12 +11,13 @@ import regex
 # from tensordict import TensorDict, MemoryMappedTensor
 import torch
 import torch.utils.data
-from dnn.tokenizer import Tokenizer
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset, IterableDataset
 from torchvision.transforms import v2
 from tqdm import tqdm
+
+from research.llm.tokenizers.tokenizer import Tokenizer
 
 
 class DummyDataset(Dataset):
@@ -27,7 +29,7 @@ class DummyDataset(Dataset):
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx):
+    def __getitem__(self, index):
         return {
             "x": torch.randn(self.dim),
             "y": torch.randint(0, self.num_classes, (1,)),
@@ -42,7 +44,7 @@ class DummyImageDataset(Dataset):
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx):
+    def __getitem__(self, index):
         return torch.randn(self.size, 3, self.size, self.size)
 
 
@@ -55,7 +57,7 @@ class DummyImageClassificationDataset(Dataset):
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx):
+    def __getitem__(self, index):
         return {
             "x": torch.randn(3, self.size, self.size),
             "y": torch.randint(0, 1000, (1,)).item(),
@@ -71,7 +73,7 @@ class DummyTextDataset(Dataset):
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx):
+    def __getitem__(self, index):
         return torch.randint(0, self.vocab_size, (self.max_len,))
 
 
@@ -93,7 +95,7 @@ class DummyImageTextDataset(Dataset):
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx):
+    def __getitem__(self, index):
         return (
             torch.randn(3, self.img_size, self.img_size),
             torch.randint(0, self.vocab_size, (self.max_len,)),
@@ -135,9 +137,9 @@ class PreTransformImageClassificationDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-    def __getitem__(self, idx):
-        img = self.dataset[idx][self.x_key]
-        label = self.dataset[idx][self.y_key]
+    def __getitem__(self, index):
+        img = self.dataset[index][self.x_key]
+        label = self.dataset[index][self.y_key]
         if self.transform:
             img = self.transform(img)
         return {"x": img, "y": label}
@@ -170,7 +172,7 @@ class MemoryMappedDataset(Dataset):
         return self.size
 
     def __del__(self):
-        for k, v in self.memmaps.items():
+        for _k, v in self.memmaps.items():
             del v
             gc.collect()
 
@@ -178,11 +180,12 @@ class MemoryMappedDataset(Dataset):
     def from_dataloader(dataloader, root, transform: Callable | None = None, x_key="x", y_key="y"):
         Path(root).mkdir(parents=True, exist_ok=True)
         memmaps = {}
-        size = len(dataloader.dataset)  # type: ignore
+        size = len(dataloader.dataset)
 
         # consume dataset in batches and save to memmap
         b = 0
         for batch in tqdm(dataloader, desc="Saving dataset to memmap"):
+            v = None
             for k, v in batch.items():
                 v = torch.as_tensor(v)
                 v = v.cpu().numpy()
@@ -196,7 +199,8 @@ class MemoryMappedDataset(Dataset):
                         shape=(size, *v_size),
                     )
                 memmaps[k][b : b + len(v)] = v
-            b += len(v)  # type: ignore
+            if v is not None:
+                b += len(v)
 
         # force garbage collection to free up memory
         gc.collect()
@@ -232,10 +236,10 @@ class TokenizeTextDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-    def __getitem__(self, idx: int) -> list[int]:
-        text = self.dataset[self.key][idx].strip()
+    def __getitem__(self, index: int) -> list[int]:
+        text = self.dataset[self.key][index].strip()
         tokens = self.tokenizer.raw_encode(text, bos=True, eos=False)
-        return tokens
+        return cast(list[int], tokens)
 
 
 class IterableTokenizeTextDataset(IterableDataset):
@@ -396,27 +400,32 @@ class ImageClassificationDataset(Dataset):
         self._len = sum([len(torch.load(chunk)) for chunk in self.list_of_chunks])
         self.list_of_start_end_indices = [tuple(chunk.stem.split("-")[1:]) for chunk in self.list_of_chunks]
         # separate the names of the chunks into a list of tuples (start, end)
-        self.mapping = {
-            idx: chunk for idx, chunk in zip(self.list_of_start_end_indices, self.list_of_chunks, strict=False)
-        }
+        self.mapping = dict(zip(self.list_of_start_end_indices, self.list_of_chunks, strict=False))
         self.transform = transform
         self.target_transform = target_transform
 
     def __len__(self):
         return self._len
 
-    def __getitem__(self, idx):
-        # find the chunk that contains the idx
+    def __getitem__(self, index):
+        # find the chunk that contains the index
+        chunk_start = 0
+        chunk_path = None
         for (start, end), chunk in self.mapping.items():
-            if int(start) <= idx < int(end):
+            if int(start) <= index < int(end):
+                chunk_start = int(start)
+                chunk_path = chunk
                 break
-        chunk = torch.load(chunk)
+        if chunk_path is None:
+            raise IndexError(f"Index {index} out of bounds")
+        chunk = torch.load(chunk_path)
+        img, label = chunk[index - chunk_start]
 
         if self.transform is not None:
             img = self.transform(img)
         if self.target_transform is not None:
             label = self.target_transform(label)
-        return {"x": ..., "y": ...}
+        return {"x": img, "y": label}
 
 
 def make_image_pre_processor(
@@ -467,11 +476,10 @@ def img2base64_str(file_name: str) -> str:
     with open(file_name, "rb") as img_file:
         base64_bytes = base64.b64encode(img_file.read())
 
-    return base64_bytes
+    return base64_bytes.decode("utf-8")
 
 
 def preprocess_text(text: str) -> list[str]:
-    gpt2_pattern = r"""'s|'t|'re|'ve|'m|'ll|'d| ?[\p{L}]+| ?[\p{N}]+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     gpt4_pattern = (
         r"'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"
     )

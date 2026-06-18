@@ -1,5 +1,3 @@
-import path
-from typing import Callable
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
@@ -37,7 +35,7 @@ class CrossAttention(nn.Module):
         k, v = kv[0], kv[1]  # (batch_size, num_heads, seq_len, feature_dim_per_head)
 
         with torch.backends.cuda.sdp_kernel():
-            q = scaled_dot_product_attention(q, k, v, scale=self.scale, is_causal=True)
+            q = F.scaled_dot_product_attention(q, k, v, scale=self.scale, is_causal=True)
 
         q = q.transpose(1, 2).reshape(B, n, C)
         return q

@@ -1,7 +1,8 @@
 import pysnooper
-from dnn.data import preprocess_text
-from dnn.tokenizer import Tokenizer, train_sp_tokenizer_from_iterator
 from transformers import AutoTokenizer
+
+from research.llm.tokenizers.tokenizer import Tokenizer, train_sp_tokenizer_from_iterator
+from research.nn.data import preprocess_text
 
 
 @pysnooper.snoop()
@@ -11,16 +12,11 @@ def test_sp_tokenizer():
         text = f.read()
     # chunk text
     chunk_size = 1000
-    chunks = [
-        " ".join(preprocess_text(text[i : i + chunk_size]))
-        for i in range(0, len(text), chunk_size)
-    ]
+    chunks = [" ".join(preprocess_text(text[i : i + chunk_size])) for i in range(0, len(text), chunk_size)]
     iterator = iter(chunks)
 
     # train
-    tokenizer = train_sp_tokenizer_from_iterator(
-        iterator, prefix="test_sp", vocab_size=150
-    )
+    tokenizer = train_sp_tokenizer_from_iterator(iterator, prefix="test_sp", vocab_size=150)
     tokenizer = Tokenizer("output/tokenizers/test_sp.model")
 
     # text encode/decode
@@ -48,6 +44,7 @@ def test_sp_tokenizer():
     print(attn_mask)
 
     hf_tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    assert hf_tokenizer is not None
     hf_tokenizer.pad_token = "[PAD]"
     encoded = hf_tokenizer(list_of_texts, return_tensors="pt", padding=True)
     print(encoded)
@@ -67,6 +64,7 @@ def distrib_spawn(fn, *args):
     mp.spawn(fn, args=(WORLD_SIZE, args), nprocs=WORLD_SIZE, join=True)
     """
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    assert tokenizer is not None
     tokenizer.pad_token = tokenizer.eos_token
     encoded = tokenizer(code, return_tensors="pt", padding=True, truncation=True)
     print(encoded)

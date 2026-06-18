@@ -1,7 +1,8 @@
-import torch
-from torch import Tensor, nn
-import torch.nn.functional as F
+from typing import Any
 
+import torch
+import torch.nn.functional as F
+from torch import Tensor, nn
 
 # 2D
 
@@ -73,10 +74,12 @@ class UNet2DBridge(UNet2DBlock):
 
 
 class UNet2DDecoderBlock(UNet2DBridge):
-    def forward(self, encoder_feature: Tensor, x: Tensor):  # pyright: ignore
+    def forward(self, *args: Any, **kwargs: Any) -> Tensor:
+        encoder_feature: Tensor = args[0] if len(args) > 0 else kwargs["encoder_feature"]
+        x: Tensor = args[1] if len(args) > 1 else kwargs["x"]
         # x: BCHW
-        b, c, h, w = x.shape
-        bf, cf, hf, wf = encoder_feature.shape
+        _b, _c, h, w = x.shape
+        _bf, _cf, hf, wf = encoder_feature.shape
         diffW = wf - w
         diffH = hf - h
         # crop
@@ -105,7 +108,9 @@ class UNet2DHead(UNet2DBlock):
         super().__init__(in_channels, out_channels, conv_kernel_size, dropout_p)
         self.conv = nn.Conv2d(out_channels, n_classes, 1)
 
-    def forward(self, encoder_feature: Tensor, x: Tensor):  # pyright: ignore
+    def forward(self, *args: Any, **kwargs: Any) -> Tensor:
+        encoder_feature: Tensor = args[0] if len(args) > 0 else kwargs["encoder_feature"]
+        x: Tensor = args[1] if len(args) > 1 else kwargs["x"]
         # x: BCHW
         _, _, h, w = x.shape
         _, _, hf, wf = encoder_feature.shape
@@ -197,7 +202,7 @@ class UNet2D(nn.Module):
 
         x = self.bridge(x)
 
-        for dec, encoder_feature in zip(self.decoders, encoders_features):
+        for dec, encoder_feature in zip(self.decoders, encoders_features, strict=False):
             x = dec(encoder_feature, x)
 
         x = self.head(encoders_features[-1], x)
@@ -275,9 +280,11 @@ class UNet3DBridge(UNet3DBlock):
 
 
 class UNet3DDecoderBlock(UNet3DBridge):
-    def forward(self, encoder_feature: Tensor, x: Tensor):  # pyright: ignore
+    def forward(self, *args: Any, **kwargs: Any) -> Tensor:
+        encoder_feature: Tensor = args[0] if len(args) > 0 else kwargs["encoder_feature"]
+        x: Tensor = args[1] if len(args) > 1 else kwargs["x"]
         # x: B, C, D, H, W
-        b, c, d, h, w = x.shape
+        _b, _c, d, h, w = x.shape
         _, _, d_e, h_e, w_e = encoder_feature.shape
         diffD = d_e - d
         diffH = h_e - h
@@ -314,7 +321,9 @@ class UNet3DHead(UNet3DBlock):
         super().__init__(in_channels, out_channels, conv_kernel_size, dropout_p)
         self.conv = nn.Conv3d(out_channels, n_classes, 1)
 
-    def forward(self, encoder_feature: Tensor, x: Tensor):  # pyright: ignore
+    def forward(self, *args: Any, **kwargs: Any) -> Tensor:
+        encoder_feature: Tensor = args[0] if len(args) > 0 else kwargs["encoder_feature"]
+        x: Tensor = args[1] if len(args) > 1 else kwargs["x"]
         # x: B, C, D, H, W
         _, _, d, h, w = x.shape
         _, _, d_e, h_e, w_e = encoder_feature.shape
@@ -413,7 +422,7 @@ class UNet3D(nn.Module):
 
         x = self.bridge(x)
 
-        for dec, encoder_feature in zip(self.decoders, encoders_features):
+        for dec, encoder_feature in zip(self.decoders, encoders_features, strict=False):
             x = dec(encoder_feature, x)
 
         x = self.head(encoders_features[-1], x)

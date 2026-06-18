@@ -3,15 +3,14 @@ import logging
 import torch
 import torch.nn.functional as F
 import torch.utils.data
-from dnn.trainer_class import Trainer
 from torch import nn, optim
+
+from research.trainer.trainer_class import Trainer
 
 log = logging.getLogger(__name__)
 
 
-model = nn.Sequential(
-    nn.Linear(768, 128), nn.ReLU(), nn.Linear(128, 2), nn.LogSoftmax(dim=-1)
-)
+model = nn.Sequential(nn.Linear(768, 128), nn.ReLU(), nn.Linear(128, 2), nn.LogSoftmax(dim=-1))
 X = torch.randn(1000, 768)
 train_dataset = torch.utils.data.TensorDataset(X, torch.randint(0, 2, (1000,)))
 eval_dataset = torch.utils.data.TensorDataset(X, torch.randint(0, 2, (1000,)))
@@ -53,7 +52,7 @@ def test_trainer_cpu_debug():
         compile=False,
         force_cpu=True,
     )
-    m = t.eval()
+    t.eval()
     t.train()
     t.close()
 
@@ -73,7 +72,7 @@ def test_trainer_cpu():
         run_name="test_trainer_cpu",
         output_root="output/tests/train",
     )
-    m = t.eval()
+    t.eval()
     t.train()
     t.close()
 
@@ -91,7 +90,7 @@ def test_trainer_cuda_ddp():
         run_name="test_trainer_cuda",
         output_root="output/tests/train",
     )
-    m = t.eval()
+    t.eval()
     t.train()
     t.close()
 
@@ -114,7 +113,7 @@ def test_trainer_fsdp():
         run_name="test_trainer_fsdp",
         output_root="output/tests/train",
     )
-    m = t.eval()
+    t.eval()
     t.train()
     t.close()
 
@@ -125,11 +124,9 @@ if __name__ == "__main__":
     """
     torchrun --standalone --nnodes=1 --nproc_per_node=2 tests/test_trainer.py cuda
     """
-    fire.Fire(
-        {
-            "cpu": test_trainer_cpu,
-            "cuda": test_trainer_cuda_ddp,
-            "ddp": test_trainer_cuda_ddp,
-            "fsdp": test_trainer_fsdp,
-        }
-    )
+    fire.Fire({
+        "cpu": test_trainer_cpu,
+        "cuda": test_trainer_cuda_ddp,
+        "ddp": test_trainer_cuda_ddp,
+        "fsdp": test_trainer_fsdp,
+    })

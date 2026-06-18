@@ -15,8 +15,7 @@ echo "Building ${IMAGE_NAME} Docker image"
 OS=ubuntu
 OS_VERSION=20.04
 CLANG_VERSION=""
-PYTHON_VERSION=3.11
-MINICONDA_VERSION=24.3.0-0
+PYTHON_VERSION=3.12
 
 case "${IMAGE_NAME}" in
   torchtitan-ubuntu-20.04-clang12)
@@ -33,7 +32,6 @@ docker build \
   --build-arg "OS_VERSION=${OS_VERSION}" \
   --build-arg "CLANG_VERSION=${CLANG_VERSION}" \
   --build-arg "PYTHON_VERSION=${PYTHON_VERSION}" \
-  --build-arg "MINICONDA_VERSION=${MINICONDA_VERSION}" \
   -f "${OS}"/Dockerfile \
   "$@" \
   .

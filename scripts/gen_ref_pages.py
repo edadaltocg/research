@@ -1,37 +1,44 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
 """Generate the code reference pages."""
 
-import os
+import contextlib
 from pathlib import Path
-
-import mkdocs_gen_files
 
 root = Path(__file__).parent.parent
 src = root / "research"
 prefix = "research"
-# remove docs/reference directory
-if os.path.exists(root / "docs/reference"):
-    os.system("rm -r " + str(root / "docs/reference/*"))
+ref_dir = root / "docs" / "reference"
 
+# Create docs/reference directory if it doesn't exist
+ref_dir.mkdir(parents=True, exist_ok=True)
+
+# Clear existing files in docs/reference
+for path in list(ref_dir.glob("**/*")):
+    if path.is_file():
+        with contextlib.suppress(OSError):
+            path.unlink()
 
 print(f"Generating reference pages from {src}")
 
 for path in sorted(src.rglob("*.py")):
-    print(f"Generating reference page for {path}")
     module_path = path.relative_to(src).with_suffix("")
     doc_path = path.relative_to(src).with_suffix(".md")
 
-    full_doc_path = Path("reference", doc_path)
+    full_doc_path = ref_dir / doc_path
 
     parts = tuple(module_path.parts)
     parts = (prefix, *parts)
 
-    if parts[-1] == "__init__":
-        continue
-    elif parts[-1] == "__main__":
+    if parts[-1] == "__init__" or parts[-1] == "__main__":
         continue
 
-    with mkdocs_gen_files.open(full_doc_path, "w") as fd:
+    # Ensure the parent directory exists
+    full_doc_path.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"Generating reference page for {path} -> {full_doc_path}")
+    with open(full_doc_path, "w") as fd:
         identifier = ".".join(parts)
         print("::: " + identifier, file=fd)
-
-    mkdocs_gen_files.set_edit_path(full_doc_path, path.relative_to(root))

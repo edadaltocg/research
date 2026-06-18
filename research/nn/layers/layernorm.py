@@ -1,8 +1,6 @@
 import torch
 from torch import Tensor, nn
 
-nn.LayerNorm()
-
 
 class LayerNorm(nn.Module):
     """

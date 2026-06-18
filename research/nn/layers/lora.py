@@ -95,7 +95,7 @@ class LoRALinear(LoRALayer):
             elif pretrained_dtype == torch.uint8:
                 import bitsandbytes as bnb
 
-                weight = self.linear.weight
+                weight: Any = self.linear.weight
                 # dequantize the pretrained weights
                 weight_data = bnb.functional.dequantize_4bit(weight.data, weight.quant_state).to(lora_data.dtype)
                 # add pretrained and LoRA weights

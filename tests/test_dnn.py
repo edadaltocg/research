@@ -1,10 +1,10 @@
 from copy import deepcopy
 
-import dnn.data
-import dnn.transformer
 import torch
-import utils
 from torch import nn
+
+import research.nn.layers.layernorm as layernorm
+import research.utils as utils
 
 utils.seed_all(42)
 
@@ -12,7 +12,7 @@ utils.seed_all(42)
 def test_layer_norm():
     x = torch.randn(2, 3, 4)
 
-    ln1 = dnn.transformer.LayerNorm(4, eps=1e-5, bias=True)
+    ln1 = layernorm.LayerNorm(4, eps=1e-5, bias=True)
     ln2 = nn.LayerNorm(4, eps=1e-5, bias=True)
 
     ln1.reset_parameters()

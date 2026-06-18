@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -19,6 +20,8 @@ def get_dataset_offline(root=ROOT / "c4", split="train[:1%]"):
 
 
 class TextPretrainPartialDataset(Dataset):
+    dataset: Any
+
     def __init__(self, root: str | Path, split: str, key: str = "text") -> None:
         self.root = str(root)
         self.split = str(split)
@@ -26,7 +29,7 @@ class TextPretrainPartialDataset(Dataset):
         self.dataset = self.build_dataset()
         print(f"{self.dataset=}")
 
-    def build_dataset(self) -> Dataset:
+    def build_dataset(self) -> Any:
         return get_dataset_offline(self.root, self.split)
 
     def __getitem__(self, index: int) -> list[str]:
@@ -45,9 +48,7 @@ def get_text_pretrain_partial_dataset(
     split: str = "train[:1%]",
     key: str = "text",
 ) -> Dataset:
-    return TextPretrainPartialDataset(
-        root=Path(root) / dataset_name, split=split, key=key
-    )
+    return TextPretrainPartialDataset(root=Path(root) / dataset_name, split=split, key=key)
 
 
 def get_text_pretrain_dataset(root=ROOT):
@@ -64,6 +65,7 @@ def write_tokenized_dataset(dest="output/datasets/mypile_tokenized"):
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
     tokenizer = AutoTokenizer.from_pretrained("output/weights/llama2-7b")
+    assert tokenizer is not None
     assert tokenizer.is_fast
     eos_tok = tokenizer.eos_token
     eos_id = tokenizer.eos_token_id
@@ -74,7 +76,7 @@ def write_tokenized_dataset(dest="output/datasets/mypile_tokenized"):
 
     def tokenizer_fn(text: list[str]):
         ids = tokenizer(text, padding=False, truncation=False)
-        ids = ids.input_ids + [eos_id]
+        ids = [*ids.input_ids, eos_id]
         return ids
 
     generator = map(tokenizer_fn, dataset)
@@ -130,7 +132,7 @@ class TokenizedPreTrainDataset(Dataset):
 
 
 class ConcatDatasetsWithProbabilities(Dataset):
-    def __init__(self, datasets: list[Dataset], probabilities: list[float]) -> None:
+    def __init__(self, datasets: list[Any], probabilities: list[float]) -> None:
         self.datasets = datasets
         self.probabilities = [p / sum(probabilities) for p in probabilities]
         self.cumulative_probabilities = np.cumsum(self.probabilities)
@@ -165,15 +167,10 @@ def build_pre_train_dataset(
     for dataset_name, split in dataset_names_splits_and_proportions:
         path = Path(root) / dataset_name / tokenizer_name / f"{split}_tokenized"
         filelist = list(path.glob("*.bin"))
-        tpm_datasets = [
-            TokenizedPreTrainDataset(str(f), block_size, padding_value=padding_value)
-            for f in filelist
-        ]
+        tpm_datasets = [TokenizedPreTrainDataset(str(f), block_size, padding_value=padding_value) for f in filelist]
         tmp_dataset = ConcatDataset(tpm_datasets)
         datasets.append(tmp_dataset)
-    dataset = ConcatDatasetsWithProbabilities(
-        datasets, list(dataset_names_splits_and_proportions.values())
-    )
+    dataset = ConcatDatasetsWithProbabilities(datasets, list(dataset_names_splits_and_proportions.values()))
 
     # min_length = min(len(d) for d in datasets)
     # sum_proportions = sum(dataset_names_splits_and_proportions.values())
@@ -193,9 +190,7 @@ if __name__ == "__main__":
     import fire
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    fire.Fire(
-        {
-            "write_tokenized_dataset": write_tokenized_dataset,
-            "read_tokenized_dataset": test_read_tokenized_dataset,
-        }
-    )
+    fire.Fire({
+        "write_tokenized_dataset": write_tokenized_dataset,
+        "read_tokenized_dataset": test_read_tokenized_dataset,
+    })

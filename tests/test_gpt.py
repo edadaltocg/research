@@ -2,11 +2,12 @@ from collections import OrderedDict
 
 import pysnooper
 import torch
-from gpt.model import GPT
 from transformers import GPT2LMHeadModel, GPT2Model, GPT2Tokenizer
 
+from research.llm.models.gpt import GPT
 
-def convert_gpt2_state_dict(state_dict: OrderedDict) -> OrderedDict:
+
+def convert_gpt2_state_dict(state_dict: dict[str, torch.Tensor]) -> OrderedDict:
     # HF
     # 'transformer.wte.weight', 'transformer.wpe.weight', 'transformer.h.0.ln_1.weight', 'transformer.h.0.ln_1.bias', 'transformer.h.11.ln_1.weight', 'transformer.h.11.ln_1.bias', 'transformer.h.11.attn.c_attn.weight', 'transformer.h.11.attn.c_attn.bias', 'transformer.h.11.attn.c_proj.weight', 'transformer.h.11.attn.c_proj.bias', 'transformer.h.11.ln_2.weight', 'transformer.h.11.ln_2.bias', 'transformer.h.11.mlp.c_fc.weight', 'transformer.h.11.mlp.c_fc.bias', 'transformer.h.11.mlp.c_proj.weight', 'transformer.h.11.mlp.c_proj.bias', 'transformer.ln_f.weight', 'transformer.ln_f.bias', 'lm_head.weight'
     # This
@@ -14,7 +15,8 @@ def convert_gpt2_state_dict(state_dict: OrderedDict) -> OrderedDict:
     new_state_dict = OrderedDict()
     for k, v in state_dict.items():
         new_key = (
-            k.replace("transformer.", "")
+            k
+            .replace("transformer.", "")
             .replace("h.", "layers.")
             .replace("attn.c_attn", "attn.qkv_proj")
             .replace("attn.c_proj", "attn.out_proj")
@@ -31,11 +33,7 @@ def convert_gpt2_state_dict(state_dict: OrderedDict) -> OrderedDict:
         # E               size mismatch for encoder.layers.11.attn.qkv_proj.weight: copying a param with shape torch.Size([768, 2304]) from checkpoint, the shape in current model is torch.Size([2304, 768]).
         # E               size mismatch for encoder.layers.11.mlp.linear1.weight: copying a param with shape torch.Size([768, 3072]) from checkpoint, the shape in current model is torch.Size([3072, 768]).
         # E               size mismatch for encoder.layers.11.mlp.linear2.weight: copying a param with shape torch.Size([3072, 768]) from checkpoint, the shape in current model is torch.Size([768, 3072]).
-        if (
-            "attn.qkv_proj" in new_key
-            or "mlp.linear1" in new_key
-            or "mlp.linear2" in new_key
-        ):
+        if "attn.qkv_proj" in new_key or "mlp.linear1" in new_key or "mlp.linear2" in new_key:
             v = v.t()
         new_state_dict[new_key] = v
     return new_state_dict
@@ -60,9 +58,7 @@ def test_gpt():
     logits = output.logits
 
     # load gpt
-    gpt = GPT(
-        vocab_size=50257, embed_dim=768, max_seq_len=1024, num_heads=12, num_layers=12
-    )
+    gpt = GPT(vocab_size=50257, embed_dim=768, max_seq_len=1024, num_heads=12, num_layers=12)
     print(gpt)
     pretrained_w = model.state_dict()
     new_w = convert_gpt2_state_dict(pretrained_w)

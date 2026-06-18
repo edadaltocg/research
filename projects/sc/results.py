@@ -1,26 +1,24 @@
+import ast
+import csv
+import functools
 import itertools
 import logging
-import ast
-import re
-
-from pydantic import BaseModel, ValidationError
-from typing import Any, List
-import csv
-import pandas as pd
+import operator
 import os
-from collections import Counter, defaultdict
+import re
+from collections import defaultdict
 from glob import glob
-from pprint import pprint
+from typing import Any
 
 import matplotlib.pyplot as plt
-import numpy as np
+import pandas as pd
 import seaborn as sns
 import torch
 from omegaconf import OmegaConf
+from pydantic import BaseModel
+from research.utils.logging import setup_logger
 from torchtune import config
 from tqdm import tqdm
-
-from research.utils.logging import setup_logger
 
 pd.set_option("display.max_columns", None)
 
@@ -33,13 +31,11 @@ def str_to_list(s):
 
 def _plot_token_trajectories(logits, tokens, correct):
     # Plotting setup
-    for idx, (logit_seq, token_seq, is_correct) in enumerate(zip(logits, tokens, correct)):
+    for idx, (logit_seq, _token_seq, is_correct) in enumerate(zip(logits, tokens, correct, strict=False)):
         log_probs = torch.log_softmax(
             torch.Tensor(logit_seq), dim=-1
         )  # assumed logits are np.ndarray; convert to tensor for computation
-        log_prob_trajectory = log_probs.max(
-            axis=-1
-        ).values.numpy()  # Getting the max log prob for each token
+        log_prob_trajectory = log_probs.max(dim=-1).values.numpy()  # Getting the max log prob for each token
 
         # Get the log probability trajectory for the sampled token sequence
         # Assume token_seq is a list of indices corresponding to the actual tokens
@@ -48,9 +44,7 @@ def _plot_token_trajectories(logits, tokens, correct):
         plt.figure(figsize=(12, 6))
         sns.lineplot(data=log_prob_trajectory, marker="o", label="Token Log Probs")
         plt.axhline(y=0, color="r", linestyle="--", linewidth=1, label="Base Log Prob Level")
-        plt.title(
-            f"Trajectory of Token Log Probs - {'Correct' if is_correct else 'Incorrect'} Example #{idx}"
-        )
+        plt.title(f"Trajectory of Token Log Probs - {'Correct' if is_correct else 'Incorrect'} Example #{idx}")
         plt.xlabel("Time step")
         plt.ylabel("Log Probability")
         plt.legend()
@@ -106,12 +100,7 @@ def preprocessing(
                     text: str = tokenizer.decode(tt.numpy().tolist())
                     v.append(text)
                     # get model final answer
-                    mfa = (
-                        text.split("The answer is: ")[-1]
-                        .split(".")[0]
-                        .strip()
-                        .replace("!", "")[:10]
-                    )
+                    mfa = text.split("The answer is: ")[-1].split(".")[0].strip().replace("!", "")[:10]
                     model_final_answers.append(mfa)
                 results["model_final_answer"].append(model_final_answers)
 
@@ -162,14 +151,14 @@ def acc_preprocessing(
     class DataModel(BaseModel):
         id: str
         final_answer: float
-        model_final_answer: List[Any]
-        logits: List[List[float]]
+        model_final_answer: list[Any]
+        logits: list[list[float]]
         model_id: str
         dataset_id: str
         seed: int
 
     # Function to transform a list of Pydantic objects into a CSV file
-    def transform_to_csv(data_list: List[DataModel], csv_file_path: str):
+    def transform_to_csv(data_list: list[DataModel], csv_file_path: str):
         # Extract field names from the Pydantic model
         field_names = DataModel.__fields__.keys()
 
@@ -182,10 +171,10 @@ def acc_preprocessing(
 
             # Write the data rows
             for data in data_list:
-                writer.writerow(data.dict())
+                writer.writerow(data.model_dump())
 
     # Function to transform the results dictionary into a list of DataModel objects
-    def transform_results_to_list(results: dict) -> List[DataModel]:
+    def transform_results_to_list(results: dict) -> list[DataModel]:
         data_list = []
         pattern = r"\d+\.?\d*"
         for i in tqdm(range(len(results["final_answer"]))):
@@ -217,18 +206,15 @@ def acc_preprocessing(
     df = pd.read_csv("/tmp/output.csv")
     df["model_final_answer"] = df["model_final_answer"].apply(str_to_list)
     df["logits"] = df["logits"].apply(ast.literal_eval)
-    assert (
-        df["logits"]
-        .apply(lambda x: isinstance(x, list) and all(isinstance(i, float) for i in x))
-        .all()
-    )
+    assert df["logits"].apply(lambda x: isinstance(x, list) and all(isinstance(i, float) for i in x)).all()
     print(df.head(5))
     df = (
-        df.groupby("id")
+        df
+        .groupby("id")
         .agg({
             "final_answer": "first",
-            "model_final_answer": lambda x: sum(x, []),
-            "logits": lambda x: sum(x, []),
+            "model_final_answer": lambda x: functools.reduce(operator.iadd, x, []),
+            "logits": lambda x: functools.reduce(operator.iadd, x, []),
             "model_id": "first",
             "dataset_id": "first",
             "seed": "first",
@@ -278,7 +264,7 @@ def viz():
         x = df_["final_answer"]
         y = df_["accuracy"]
         print("figure:")
-        g = sns.jointplot(x=x, y=y, kind="scatter", marginal_kws=dict(bins=20, fill=True))
+        sns.jointplot(x=x, y=y, kind="scatter", marginal_kws={"bins": 20, "fill": True})
         txt = f"""{model_id}
 {dataset_id}
 Avg: {sum(y) / len(y):.2f}
@@ -293,7 +279,7 @@ N: 64
             wrap=True,
             horizontalalignment="left",
             fontsize=12,
-            bbox=dict(facecolor="white", alpha=0.8),
+            bbox={"facecolor": "white", "alpha": 0.8},
         )
         # g.plot_joint(sns.kdeplot, color="r", zorder=0, levels=6)
         # g.plot_marginals(sns.rugplot, color="r", height=-0.15, clip_on=False)

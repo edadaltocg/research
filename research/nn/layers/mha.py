@@ -1,6 +1,6 @@
 import math
-from typing import Callable
-import torch
+from collections.abc import Callable
+
 import torch.nn.functional as F
 from torch import Tensor, nn
 
@@ -53,10 +53,7 @@ class MHA(nn.Module):
         if self.kv_cache is not None and input_pos is not None:
             k, v = self.kv_cache.update(input_pos, k, v)
 
-        if self.training:
-            dropout_p = self.dropout_p
-        else:
-            dropout_p = 0
+        dropout_p = self.dropout_p if self.training else 0
 
         x = self.sdpa(
             q,

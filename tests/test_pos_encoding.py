@@ -3,8 +3,9 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
-from dnn.modeling.pos_encoding import vanilla_positional_encoding
-from utils import seed_all
+
+from research.nn.layers.pos_encoding import vanilla_positional_encoding
+from research.utils import seed_all
 
 seed_all(42)
 
@@ -21,9 +22,7 @@ def test_vanilla_positional_encoding():
     plt.ylabel("Sequence Position")
     plt.colorbar()
     plt.tight_layout()
-    dest = Path(
-        os.path.join("output", "tests", "plots", "vanilla_positional_encoding.png")
-    )
+    dest = Path(os.path.join("output", "tests", "plots", "vanilla_positional_encoding.png"))
     dest.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(dest, bbox_inches="tight", pad_inches=0)
     plt.close(fig)

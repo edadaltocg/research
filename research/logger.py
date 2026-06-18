@@ -1,6 +1,6 @@
 import logging
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import torch.distributed as dist
 
@@ -101,7 +101,4 @@ class RankFilter(logging.Filter):
             self.rank = 0
 
     def filter(self, record):
-        if self.func(self.rank):
-            return True
-        else:
-            return False
+        return bool(self.func(self.rank))

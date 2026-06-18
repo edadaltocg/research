@@ -23,7 +23,9 @@ def main(
     level="INFO",
     seed=42,
 ):
-    research.utils.seed_all(seed)
+    from research.trainer.trainer_class import Trainer
+
+    Trainer.seed_all(seed)
     logs_path = Path(__file__).parent / research.config.LOGS_DIR / "main.out"
     log = research.logger.setup_logger(level, logs_path=logs_path)
     outs_dir = Path(__file__).parent / research.config.OUTPUT_DIR

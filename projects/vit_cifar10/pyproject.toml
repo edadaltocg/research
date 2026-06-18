@@ -1,0 +1,17 @@
+[project]
+name = "vit-cifar10"
+version = "0.1.0"
+description = "Vision Transformer CIFAR10"
+requires-python = ">=3.12"
+dependencies = [
+    "research",
+    "torch",
+    "torchvision",
+    "albumentations>=2.0.4",
+    "numpy",
+    "pyyaml",
+    "torchinfo",
+]
+
+[tool.uv.sources]
+research = { workspace = true }

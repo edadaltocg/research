@@ -1,16 +1,16 @@
 import itertools
 import logging
 import time
-from typing import Any, Dict, Union
+from typing import Any
 
 import torch
+from research.utils.logging import setup_logger
 from torch import Tensor
 from torchtune.modules import TransformerDecoder
 from tqdm import tqdm
 
 from projects.sc.inference import forward
 from research.llm.sample import sample
-from research.utils.logging import setup_logger
 
 log = logging.getLogger(__file__)
 setup_logger(logging.INFO)
@@ -22,13 +22,9 @@ def _log_metrics(model, total_time: float, prefill_time: float, tokens_per_secon
 
     Feel free to modify this function to log additional metrics.
     """
-    model_size = sum([
-        p.numel() * p.dtype.itemsize for p in itertools.chain(model.parameters(), model.buffers())
-    ])
+    model_size = sum([p.numel() * p.dtype.itemsize for p in itertools.chain(model.parameters(), model.buffers())])
     log.info(f"Time for prefill: {prefill_time:.02f} sec")
-    log.info(
-        f"Total time for inference: {total_time:.02f} sec total, {tokens_per_second:.02f} tokens/sec"
-    )
+    log.info(f"Total time for inference: {total_time:.02f} sec total, {tokens_per_second:.02f} tokens/sec")
     log.info(f"Bandwidth achieved: {model_size * tokens_per_second / 1e9:.02f} GB/s")
     log.info(f"Max memory allocated: {torch.cuda.max_memory_allocated() / 1e9:.02f} GB")
 
@@ -55,7 +51,7 @@ def generate_lm_sc(
     top_p=None,
     top_k=None,
     stop_tokens=None,
-) -> Dict[str, Union[Tensor, Any]]:
+) -> dict[str, Tensor | Any]:
     """The main entry point for generating tokens from a prompt."""
 
     bsz, prompt_len = tokens.size()
@@ -83,14 +79,10 @@ def generate_lm_sc(
             device=device,
         )
     ).unsqueeze(0)
-    input_pos = (
-        torch.arange(total_response_length).unsqueeze(0).to(dtype=torch.int32, device=tokens.device)
-    )
+    input_pos = torch.arange(total_response_length).unsqueeze(0).to(dtype=torch.int32, device=tokens.device)
 
     # Prefill step
-    generated_tokens = torch.zeros(
-        bsz, total_response_length, device=tokens.device, dtype=tokens.dtype
-    )
+    generated_tokens = torch.zeros(bsz, total_response_length, device=tokens.device, dtype=tokens.dtype)
     generated_tokens[:, :prompt_len] = tokens.clone()
     t0 = time.perf_counter()
     h, logits = forward(
@@ -113,9 +105,7 @@ def generate_lm_sc(
     )
     generated_logits[:, :curr_pos] = logits
 
-    generated_h = torch.zeros(
-        bsz, total_response_length, h.shape[-1], device=tokens.device, dtype=h.dtype
-    )
+    generated_h = torch.zeros(bsz, total_response_length, h.shape[-1], device=tokens.device, dtype=h.dtype)
     generated_h[:, :curr_pos] = h
 
     # Stop token
@@ -123,9 +113,7 @@ def generate_lm_sc(
     stop_tokens = torch.tensor(stop_tokens, device=tokens.device, dtype=tokens.dtype)
     # everything in stop_token_mask starts as 1s, and we'll set them to 0 for sequences
     # that already hit a stop token
-    stop_token_mask = torch.ones(
-        (bsz, total_response_length), dtype=torch.int32, device=tokens.device
-    )
+    stop_token_mask = torch.ones((bsz, total_response_length), dtype=torch.int32, device=tokens.device)
 
     # Continue generating TODO: with greedy search?
     for _ in tqdm(range(max_new_tokens - 1)):
@@ -165,15 +153,15 @@ def generate_lm_sc(
     logits_topk = torch.topk(generated_logits, k=1024, dim=-1).values
 
     # limit storage usage
-    return dict(
-        tokens=generated_tokens[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.int32),
-        logits=logits_topk[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.float16),
-        hidden=generated_h[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.float16),
-        prompt_len=prompt_len,
-        max_len=max_len,
-        temperature=temperature,
-        top_p=top_p,
-        top_k=top_k,
-        t_prefill=t_prefill,
-        t_total=t_total,
-    )
+    return {
+        "tokens": generated_tokens[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.int32),
+        "logits": logits_topk[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.float16),
+        "hidden": generated_h[:, prompt_len:curr_pos].to(device="cpu", dtype=torch.float16),
+        "prompt_len": prompt_len,
+        "max_len": max_len,
+        "temperature": temperature,
+        "top_p": top_p,
+        "top_k": top_k,
+        "t_prefill": t_prefill,
+        "t_total": t_total,
+    }
