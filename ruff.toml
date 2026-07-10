@@ -19,9 +19,17 @@ select = [
   "UP",   # pyupgrade
   "RUF",  # ruff
   "TRY",  # tryceratops
+  "ANN",  # flake8-annotations
 ]
 
 ignore = [
+  "ANN002", # Missing type annotation for *args
+  "ANN003", # Missing type annotation for **kwargs
+  "ANN202", # Missing return type annotation for private function
+  "ANN204", # Missing return type annotation for special method __init__
+  "ANN205", # Missing return type annotation for staticmethod
+  "ANN206", # Missing return type annotation for classmethod
+  "ANN401", # Dynamically typed expressions (Any) are disallowed (allow explicit Any)
   "E501",  # Line too long (AI research code frequently has long inline layers/tensors/configs/URLs)
   "E731",  # Do not assign lambda expression (lambdas are common/clean in data pipelines/transforms)
   "E741",  # Ambiguous variable name (capital X, Y, H, W, etc. are standard mathematical notation)
@@ -44,6 +52,11 @@ ignore = [
 "tests/*" = ["S101"]  # S101: assert statements are required for tests
 "projects/**" = ["F821", "S108", "S311", "SIM115"]  # Suppress sandbox-specific draft code warnings in projects
 "tutorials/**" = ["B020", "A002", "S311", "SIM115"]  # Suppress loose style and random generator warnings in tutorials
+"research/**/*.py" = ["ANN001", "ANN201"]  # Relax type-annotation constraints in research files for ergonomics
+
+[lint.flake8-annotations]
+ignore-fully-untyped = true
+suppress-none-returning = true
 
 [format]
 quote-style = "double"
