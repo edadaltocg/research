@@ -51,6 +51,24 @@ class ManifoldEBM(nn.Module):
         return self.net(torch.cat([m, y], -1)).squeeze(-1)
 
 
+class PhaseVerifierEBM(nn.Module):
+    """E(phi | x, y): verify whether phase phi explains observation y = sin(x + phi) + noise.
+
+    Phase is circular, so a candidate phi enters as [cos(phi), sin(phi)] rather than a raw
+    angle -- phi=0 and phi=2*pi must give identical energy. Because sin is periodic and
+    even-symmetric, many phases explain the same (x, y): the EBM represents this multimodal
+    set with several low-energy valleys, which a single-output regressor could never do.
+    """
+
+    def __init__(self, hidden=128):
+        super().__init__()
+        self.net = _mlp(4, hidden)  # x, y, cos(phi), sin(phi)
+
+    def forward(self, x: Tensor, y: Tensor, phi: Tensor) -> Tensor:
+        inp = torch.stack([x, y, torch.cos(phi), torch.sin(phi)], -1)
+        return self.net(inp).squeeze(-1)
+
+
 def sample_context(n: int):
     query = torch.rand(n) * np.pi  # parameter along the arc
     moon_id = torch.randint(0, 2, (n,))  # which moon
@@ -104,14 +122,14 @@ def _energy(model, device, t, m, pts):
         )
 
 
-def _loss_figure(losses):
-    """A simple training-loss curve for the Dash pages."""
+def _loss_figure(losses, log=False):
+    """A simple training-loss curve for the Dash pages. Use log=True only for positive losses."""
     fig = go.Figure(go.Scatter(y=losses, mode="lines", line={"color": "steelblue"}))
     fig.update_layout(
-        title="Training loss (log scale)",
+        title="Training loss" + (" (log scale)" if log else ""),
         xaxis_title="step",
         yaxis_title="loss",
-        yaxis_type="log",
+        yaxis_type="log" if log else "linear",
         height=280,
         margin={"l": 50, "r": 20, "t": 40, "b": 40},
     )
@@ -239,31 +257,34 @@ def ebm_verifier_example():
     # around the minimum (the noise is from SGD + fresh random negatives every step).
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=steps, eta_min=1e-5)
     batch_size = 256
-    n_neg = 128  # negatives spread across the whole plane per context
-    temperature = 2.0  # >1 softens the InfoNCE softmax -> wider, less spiky energy valley
-    e_l2 = 1e-1  # L2 on energies: kills shift-invariance AND penalizes very deep/sharp spikes
+    n_neg = 128  # importance samples used to estimate the partition function Z
+    area = 5.0 * 5.0  # the [-2.5, 2.5]^2 proposal region; q(y) = 1/area (uniform)
+    log_area_over_n = float(np.log(area) - np.log(n_neg))
+    e_l2 = 1e-2  # L2 on energies keeps the (otherwise unbounded) landscape from spiking
     losses = []
 
     for step in tqdm(range(steps)):
         query, moon_id = sample_context(batch_size)
         query, moon_id = query.to(device), moon_id.to(device)
         pos = _gt_point(query, moon_id).to(device) + 0.03 * torch.randn(batch_size, 2, device=device)
-        # Negatives sampled uniformly over the plane so the softmax denominator covers all of
-        # space, not just 6 points near the target. Without this the landscape is unconstrained
-        # off the candidates and looks weird; with it, InfoNCE carves a smooth bowl at the target.
+
+        e_pos = model(query, moon_id, pos)  # E(y+ | ctx), shape (B,)
+
+        # Negative log-likelihood of the EBM p(y|ctx) = exp(-E(y)) / Z(ctx).
+        #   NLL = E(y+) + log Z ,  Z = ∫ exp(-E) dy
+        # Estimate log Z by importance sampling from the uniform proposal q(y) = 1/area:
+        #   Z ≈ (1/n) Σ exp(-E(y_i)) / q(y_i) = (area/n) Σ exp(-E(y_i))
+        #   log Z ≈ logsumexp(-E_neg) + log(area) - log(n)
+        # The positive is folded into the normalizer too, so the model can't cheat by driving
+        # E(y+) to -inf in a region the finite negatives never sample (self-normalized ML).
         neg = torch.rand(batch_size, n_neg, 2, device=device) * 5 - 2.5
-        cands = torch.cat([pos.unsqueeze(1), neg], dim=1)  # (B, 1+n_neg, 2); index 0 = positive
-        K = cands.shape[1]
-
-        t = query.repeat_interleave(K)
-        m = moon_id.repeat_interleave(K)
-        e = model(t, m, cands.reshape(batch_size * K, 2)).reshape(batch_size, K)
-
-        # InfoNCE: -E/temperature are logits, the positive (index 0) must get the most mass.
-        # A higher temperature and stronger energy L2 keep the valley smooth instead of a spike.
-        logits = -e / temperature
-        target = torch.zeros(batch_size, dtype=torch.long, device=device)
-        loss = nn.functional.cross_entropy(logits, target) + e_l2 * (e**2).mean()
+        t = query.repeat_interleave(n_neg)
+        m = moon_id.repeat_interleave(n_neg)
+        e_neg = model(t, m, neg.reshape(batch_size * n_neg, 2)).reshape(batch_size, n_neg)
+        log_z = torch.logsumexp(torch.cat([-e_pos.unsqueeze(1), -e_neg], dim=1), dim=1) + log_area_over_n
+        # Regularize ALL energies (not just the positive) to keep the landscape bounded/smooth.
+        e_all = torch.cat([e_pos.unsqueeze(1), e_neg], dim=1)
+        loss = (e_pos + log_z).mean() + e_l2 * (e_all**2).mean()
 
         opt.zero_grad()
         loss.backward()
@@ -273,7 +294,7 @@ def ebm_verifier_example():
 
         losses.append(loss.item())
         if step % 300 == 0:
-            print(f"step {step:4d} | loss {loss.item():.3f} | lr {sched.get_last_lr()[0]:.2e}")
+            print(f"step {step:4d} | nll {loss.item():.3f} | lr {sched.get_last_lr()[0]:.2e}")
 
     plot_energy_landscape(model, device, losses=losses)
 
@@ -363,7 +384,7 @@ def plot_score_landscape(model: nn.Module, device, moon_noise=0.05, port=8051, l
         dcc.Graph(id="fig", figure=build(0, None)),
     ]
     if losses:
-        layout.append(dcc.Graph(id="loss", figure=_loss_figure(losses)))
+        layout.append(dcc.Graph(id="loss", figure=_loss_figure(losses, log=True)))
     app.layout = html.Div(layout)
 
     @app.callback(Output("fig", "figure"), Input("m", "value"), Input("fig", "clickData"))
@@ -422,7 +443,123 @@ def ebm_score_matching_example():
     plot_score_landscape(model, device, losses=losses)
 
 
+def _true_phases(x: float, y: float):
+    """All phi in [0, 2*pi) with sin(x + phi) = y (the ground-truth modes to verify against)."""
+    y = float(np.clip(y, -1.0, 1.0))
+    a = np.arcsin(y)  # principal solution of sin(theta) = y
+    thetas = [a, np.pi - a]  # sin is symmetric about pi/2
+    phis = [(theta - x) % (2 * np.pi) for theta in thetas]
+    return sorted({round(p, 4) for p in phis})
+
+
+def plot_phase_landscape(model: nn.Module, device, losses=None, port=8052):
+    """Interactive phase verifier: 1D energy E(phi | x, y) over the phase circle.
+
+    Slide x and the observed y; the curve shows the verifier's energy for every candidate
+    phase. Dashed lines mark the exact phases where sin(x + phi) = y -- the valleys should sit
+    right on them, and there are usually TWO (sin's symmetry) so a regressor would fail here.
+    """
+    from dash import Dash, Input, Output, dcc, html
+
+    phi = torch.linspace(0, 2 * np.pi, 400)
+
+    def build(x, y):
+        with torch.no_grad():
+            e = model(torch.full_like(phi, x).to(device), torch.full_like(phi, y).to(device), phi.to(device)).cpu()
+        fig = go.Figure(
+            go.Scatter(x=phi.numpy(), y=e.numpy(), mode="lines", line={"color": "steelblue"}, name="E(phi)")
+        )
+        for p in _true_phases(x, y):
+            fig.add_vline(x=p, line={"color": "crimson", "dash": "dash"})
+        fig.update_layout(
+            title=f"Phase verifier — x={x:.2f}, y={y:.2f} (dashed = true phases)",
+            xaxis_title="phase phi",
+            yaxis_title="energy",
+            height=500,
+        )
+        return fig
+
+    app = Dash(__name__)
+    layout = [
+        html.Label("x"),
+        dcc.Slider(
+            id="x", min=-2 * np.pi, max=2 * np.pi, step=0.05, value=0.0, marks=None, tooltip={"placement": "bottom"}
+        ),
+        html.Label("observed y"),
+        dcc.Slider(id="y", min=-1.0, max=1.0, step=0.02, value=0.5, marks=None, tooltip={"placement": "bottom"}),
+        dcc.Graph(id="fig", figure=build(0.0, 0.5)),
+    ]
+    if losses:
+        layout.append(dcc.Graph(id="loss", figure=_loss_figure(losses)))
+    app.layout = html.Div(layout)
+
+    @app.callback(Output("fig", "figure"), Input("x", "value"), Input("y", "value"))
+    def _update(x, y):
+        return build(x, y)
+
+    print(f"Serving phase verifier at http://127.0.0.1:{port}")
+    app.run(port=port)
+
+
+def ebm_phase_verifier_example():
+    """Verify a phase for a noisy sine: is `phi` consistent with y = sin(x + phi) + noise?
+
+    Data: sample x and a true phase, observe y = sin(x + phi_true) + noise. The verifier
+    E(phi | x, y) is trained with self-normalized maximum likelihood over the phase circle so
+    that every phase explaining the observation gets low energy. Because sin(theta) = y has two
+    solutions per period, the learned energy has TWO valleys -- the whole point of a verifier.
+    """
+    seed_all(42)
+    device = get_default_device()
+    print(f"{device=}")
+
+    model = PhaseVerifierEBM().to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    steps = 10000
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=steps, eta_min=1e-5)
+    batch_size = 256
+    n_neg = 128  # importance samples over phi in [0, 2*pi] to estimate log Z
+    noise_std = 0.05
+    log_z_const = float(np.log(2 * np.pi) - np.log(n_neg))  # uniform proposal q(phi)=1/(2*pi)
+    e_l2 = 1e-2
+    losses = []
+
+    for step in tqdm(range(steps)):
+        x = (torch.rand(batch_size, device=device) * 4 - 2) * np.pi  # x in [-2pi, 2pi]
+        phi_true = torch.rand(batch_size, device=device) * 2 * np.pi
+        y = torch.sin(x + phi_true) + noise_std * torch.randn(batch_size, device=device)
+
+        # Positive: the true phase (tiny jitter for a valley of nonzero width).
+        phi_pos = phi_true + 0.02 * torch.randn(batch_size, device=device)
+        e_pos = model(x, y, phi_pos)
+
+        # Negatives: uniform phases; self-normalized NLL = E(phi+) + log Z.
+        phi_neg = torch.rand(batch_size, n_neg, device=device) * 2 * np.pi
+        e_neg = model(x.repeat_interleave(n_neg), y.repeat_interleave(n_neg), phi_neg.reshape(-1)).reshape(
+            batch_size, n_neg
+        )
+        log_z = torch.logsumexp(torch.cat([-e_pos.unsqueeze(1), -e_neg], dim=1), dim=1) + log_z_const
+        e_all = torch.cat([e_pos.unsqueeze(1), e_neg], dim=1)
+        loss = (e_pos + log_z).mean() + e_l2 * (e_all**2).mean()
+
+        opt.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        opt.step()
+        sched.step()
+
+        losses.append(loss.item())
+        if step % 300 == 0:
+            print(f"step {step:4d} | nll {loss.item():.3f} | lr {sched.get_last_lr()[0]:.2e}")
+
+    plot_phase_landscape(model, device, losses=losses)
+
+
 if __name__ == "__main__":
     import fire
 
-    fire.Fire({"verifier": ebm_verifier_example, "score_matching": ebm_score_matching_example})
+    fire.Fire({
+        "verifier": ebm_verifier_example,
+        "score_matching": ebm_score_matching_example,
+        "phase_verifier": ebm_phase_verifier_example,
+    })
