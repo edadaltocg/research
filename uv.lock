@@ -605,7 +605,7 @@ name = "ebm-sudoku-solver"
 version = "0.1.0"
 source = { editable = "projects/ebm_sudoku_solver" }
 dependencies = [
-    { name = "torch" },
+    { name = "research" },
 ]
 
 [package.dev-dependencies]
@@ -614,7 +614,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "torch", specifier = ">=2.12.0" }]
+requires-dist = [{ name = "research", editable = "." }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.0.3" }]
