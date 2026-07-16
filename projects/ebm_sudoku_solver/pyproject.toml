@@ -1,0 +1,25 @@
+[project]
+name = "ebm-sudoku-solver"
+version = "0.1.0"
+description = "An EBM sudoku solver."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "research",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
+[tool.uv.sources]
+research = { workspace = true }
+
+[tool.uv.build-backend]
+module-name = "ebm_sudoku_solver"
+module-root = "src"
+
+[build-system]
+requires = ["uv-build"]
+build-backend = "uv_build"
