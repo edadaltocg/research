@@ -6,9 +6,10 @@ Module to define analytical utilities for the Sudoku game.
 import math
 from enum import IntEnum
 
+import numpy as np
 import torch
 from loguru import logger
-from torch import Tensor
+from torch import Generator, Tensor
 
 # TODO: make them env vars
 DEFAULT_BOARD_RANK = 3
@@ -84,6 +85,10 @@ def get_board_rank(board: Tensor) -> int:
     return int(math.sqrt(get_board_width(board)))
 
 
+def count_empty_cells(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> int:
+    return int(torch.sum(board == empty_value).to(dtype=torch.long).item())
+
+
 def get_trivial_completed_board(board_rank: int = DEFAULT_BOARD_RANK) -> Tensor:
     initial_board = to_board_type(
         [
@@ -129,13 +134,15 @@ def is_valid_solution(board: Tensor):
     torch.testing.assert_close(cols_sorted, expected.expand(width, width))
 
     # 3. Verify blocks
-    # TODO: explain this op
+    # stretch them into lines to check similarly to the columns and rows
+    # (block per line, row within block, block per column, column within block) -- before permutation
+    # (block per line, block per column, row within block, column within block) -- after permutation
     blocks = board.reshape(rank, rank, rank, rank).permute(0, 2, 1, 3).reshape(width, width)
     blocks_sorted, _ = torch.sort(blocks, dim=1)
     torch.testing.assert_close(blocks_sorted, expected.expand(width, width))
 
 
-def is_valid_board(board: Tensor) -> bool:
+def is_valid_board(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> bool:
     """
     Verify validity of any incomplete sudoku board.
 
@@ -148,43 +155,38 @@ def is_valid_board(board: Tensor) -> bool:
     Algorithm:
 
     Complexity:
-        O(3*N)
+        O(N^2)
     """
-    # TODO: come up with a fast implementation of this function
-
     width = get_board_width(board)
     rank = get_board_rank(board)
-
     board_: list[list[int]] = board.tolist()
-
-    # 1. Verify rows
-    for row in board_:
+    for i in range(width):
         values_in_row = set()
-        for val in row:
-            if val in values_in_row and val != 0:
-                return False
-            values_in_row.add(val)
-
-    # 2. Verify columns
-    for i in range(width):
         values_in_col = set()
-        for row in board_:
-            val = row[i]
-            if val in values_in_col and val != 0:
-                return False
-            values_in_col.add(val)
+        values_in_blk = set()
+        for j in range(width):
+            logger.debug(f"row {(i, j)}")
+            logger.debug(f"col {(j, i)}")
+            k_row = rank * (i // rank) + j // rank
+            k_col = rank * (i % rank) + j % rank
+            logger.debug(f"blk {(k_row, k_col)}")
 
-    # 3. Verify 3x3 blocks
-    for i in range(width):
-        block_row_idx = i // rank
-        block_col_idx = i % rank
-        values_in_block = set()
-        for j in range(rank):
-            for k in range(rank):
-                val = board_[block_row_idx * rank + j][block_col_idx * rank + k]
-                if val in values_in_block and val != 0:
-                    return False
-                values_in_block.add(val)
+            val_row = board_[i][j]
+            val_col = board_[j][i]
+            val_blk = board_[k_row][k_col]
+
+            # 1. Check rows
+            if val_row in values_in_row and val_row != empty_value:
+                return False
+            # 2. Check cols
+            if val_col in values_in_col and val_col != empty_value:
+                return False
+            # 3. Check blocks
+            if val_blk in values_in_blk and val_blk != empty_value:
+                return False
+            values_in_row.add(val_row)
+            values_in_col.add(val_col)
+            values_in_blk.add(val_blk)
 
     return True
 
@@ -195,8 +197,6 @@ def get_is_valid_mask(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VA
     board_: list[list[int]] = board.tolist()
 
     mask = torch.ones_like(board, dtype=torch.bool)
-    expected = torch.arange(1, width + 1, dtype=board.dtype, device=board.device)
-
     for i in range(width):
         values_in_row = set()
         values_in_col = set()
@@ -204,8 +204,8 @@ def get_is_valid_mask(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VA
         for j in range(width):
             logger.debug(f"row {(i, j)}")
             logger.debug(f"col {(j, i)}")
-            k_row = rank * (i // 3) + j // rank
-            k_col = rank * (i % 3) + j % rank
+            k_row = rank * (i // rank) + j // rank
+            k_col = rank * (i % rank) + j % rank
             logger.debug(f"blk {(k_row, k_col)}")
 
             val_row = board_[i][j]
@@ -293,63 +293,112 @@ def has_unique_solution(board: Tensor) -> bool:
     return False
 
 
-def _rotate_board_clockwise_90_deg(board: Tensor) -> Tensor:
-    return board
+def _rotate_board_clockwise_90_deg(board: Tensor, *, batched: bool = False) -> Tensor:
+    dims = (0, 1) if not batched else (1, 2)
+    return board.rot90(k=-1, dims=dims)
 
 
-def _rotate_board_clockwise_180_deg(board: Tensor) -> Tensor:
-    return board
+def _rotate_board_clockwise_180_deg(board: Tensor, *, batched: bool = False) -> Tensor:
+    dims = (0, 1) if not batched else (1, 2)
+    return board.rot90(k=-2, dims=dims)
 
 
-def _rotate_board_clockwise_270_deg(board: Tensor) -> Tensor:
-    return board
+def _rotate_board_clockwise_270_deg(board: Tensor, *, batched: bool = False) -> Tensor:
+    dims = (0, 1) if not batched else (1, 2)
+    return board.rot90(k=-3, dims=dims)
 
 
-def _reflect_board_horizontally(board: Tensor) -> Tensor:
-    return board
+def _reflect_board_horizontally(board: Tensor, *, batched: bool = False) -> Tensor:
+    # torch.flip creates a copy, better is np flip
+    axis = (0, 1) if not batched else (1, 2)
+    # force=False is a memory view instead of copy
+    return torch.tensor(np.flip(board.detach().cpu().numpy(force=False), axis=axis), dtype=torch.long)
 
 
-def _reflect_board_vertically(board: Tensor) -> Tensor:
-    return board
+def _reflect_board_vertically(board: Tensor, *, batched: bool = False) -> Tensor:
+    axis = (0, 1) if not batched else (1, 2)
+    return torch.tensor(np.fliplr(board.detach().cpu().numpy(force=False), axis=axis), dtype=torch.long)
 
 
 def _reflect_board_diagonally(board: Tensor) -> Tensor:
-    return board
+    """Reflect across the main diagonal:  (i, j) -> (j, i)."""
+    return board.T
 
 
 def _reflect_board_antidiagonally(board: Tensor) -> Tensor:
-    return board
+    """Reflect across the anti-diagonal:  (i, j) -> (n-1-j, n-1-i)."""
+    return board.flip((0, 1)).T
 
 
-def _relabel_digits(board: Tensor) -> Tensor:
-    return board
+def _relabel_digits(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> Tensor:
+    """Apply a random bijection of the digits {1, ..., width}."""
+    width = get_board_width(board)
+    perm = torch.randperm(width, device=board.device) + 1
+    lookup = torch.cat([
+        torch.ones(1, dtype=board.dtype, device=board.device) * empty_value,
+        perm.to(board.dtype),
+    ])
+    # broadcasting to index shape. Same bijection on entire batch.
+    return lookup[board]
 
 
-def _permutate_rows(board: Tensor) -> Tensor:
-    return board
+def _permutate_rows(board: Tensor, *, batched: bool = False, generator: Generator | None = None) -> Tensor:
+    width = get_board_width(board)
+    perm = torch.randperm(width, generator=generator)
+    if batched:
+        return board[:, perm]
+    return board[perm]
 
 
-def _permutate_cols(board: Tensor) -> Tensor:
-    return board
+def _permutate_cols(board: Tensor, *, batched: bool = False, generator: Generator | None = None) -> Tensor:
+    width = get_board_width(board)
+    perm = torch.randperm(width, generator=generator)
+    if batched:
+        return board[:, :, perm]
+    return board[:, perm]
 
 
-def _permutate_stacks(board: Tensor) -> Tensor:
-    return board
+def _permutate_blocks_rows(board: Tensor, *, batched: bool = False, generator: Generator | None = None) -> Tensor:
+    rank = get_board_rank(board)
+    width = get_board_width(board)
+    perm = torch.randperm(rank, generator=generator)
+    # (block per line, row within block, block per column, column within block)
+    board = board.reshape(rank, rank, rank, rank)
+    if batched:
+        return board[:, perm].reshape(width, width)
+    return board[perm].reshape(width, width)
 
 
-def _permutate_bands(board: Tensor) -> Tensor:
-    return board
+def _permutate_blocks_cols(board: Tensor, *, batched: bool = False, generator: Generator | None = None) -> Tensor:
+    rank = get_board_rank(board)
+    width = get_board_width(board)
+    perm = torch.randperm(rank, generator=generator)
+    # (block per line, row within block, block per column, column within block)
+    board = board.reshape(rank, rank, rank, rank)
+    if batched:
+        return board[:, :, :, perm].reshape(width, width)
+    return board[:, :, perm].reshape(width, width)
 
 
 def get_random_mask(
     difficulty: SudokuDifficulty = SudokuDifficulty.EASY, board_rank: int = DEFAULT_BOARD_RANK
 ) -> Tensor:
-    mask_size = board_rank**4 - difficulty.value
-    key_mask = torch.randint(low=0, high=board_rank**4, size=(mask_size,))
-    mask = torch.zeros((board_rank**2, board_rank**2), dtype=torch.bool)
+    """O(n)."""
+    # TODO: speed this up, batch it up
+    width = board_rank**2
+    mask_size = width**2 - difficulty.value
+    # unique random indexes in the board
+    key_mask = torch.randperm(width**2, dtype=torch.long)[:mask_size]
+    logger.debug(f"{key_mask=}")
+    logger.debug(f"{key_mask.shape=}")
+    mask = torch.zeros((width, width), dtype=torch.bool)
+    logger.debug(f"{mask=}")
     for k in key_mask:
-        i = k // (board_rank**2)
-        j = k % (board_rank**2)
+        logger.debug(f"{k=}")
+        i = k // width
+        logger.debug(f"{i=}")
+        j = k % width
+        logger.debug(f"{j=}")
         mask[i][j] = True
     return mask
 

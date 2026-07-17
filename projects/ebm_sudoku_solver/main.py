@@ -9,7 +9,9 @@
 
 from ebm_sudoku_solver.game.sudoku import (
     SudokuDifficulty,
+    _rotate_board_clockwise_90_deg,
     apply_mask,
+    count_empty_cells,
     get_empty_board,
     get_is_valid_mask,
     get_random_mask,
@@ -32,6 +34,7 @@ def main():
     is_valid_board(empty_board)
     print("Empty board:")
     print(render(empty_board))
+    print(f"Empty cells: {count_empty_cells(empty_board)}")
 
     print("Trivial completed board:")
     trivial_board = get_trivial_completed_board(board_rank=board_rank)
@@ -48,7 +51,22 @@ def main():
     trivial_board = get_trivial_completed_board(board_rank=board_rank)
     mask = get_random_mask(difficulty=SudokuDifficulty.EASY, board_rank=board_rank)
     masked_board = apply_mask(trivial_board, mask)
+    is_valid_mask = get_is_valid_mask(masked_board)
     print(render(masked_board, mask=is_valid_mask))
+    print(f"Empty cells: {count_empty_cells(masked_board)}")
+
+    print("Rotated trivial board")
+    trivial_board = get_trivial_completed_board(board_rank=board_rank)
+    rotated_board = _rotate_board_clockwise_90_deg(trivial_board)
+    print(render(rotated_board))
+
+    print("Blocks symmetry")
+    blocks_tensor = trivial_board.reshape(board_rank, board_rank, board_rank, board_rank)
+    print(render(trivial_board))
+    print(blocks_tensor)
+    print(blocks_tensor[0])
+    print(blocks_tensor[1])
+    print(blocks_tensor[2])
 
 
 if __name__ == "__main__":
