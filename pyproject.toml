@@ -26,6 +26,7 @@ dependencies = [
   "scikit-learn>=1.9.0",
   "plotly>=6.9.0",
   "dash>=4.4.0",
+  "loguru>=0.7.3",
 ]
 [project.optional-dependencies]
 docs = [
@@ -59,8 +60,9 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv-build"]
+requires = ["uv_build>=0.11.29,<0.12"]
 build-backend = "uv_build"
+
 
 [tool.uv.build-backend]
 module-name = "research"
@@ -79,10 +81,3 @@ default = true
 [tool.uv.workspace]
 members = ["projects/*"]
 
-[tool.ty.environment]
-python-version = "3.12"
-
-[tool.ty.rules]
-unresolved-import = "ignore"
-possibly-unresolved-reference = "ignore"
-missing-type-argument = "error"
