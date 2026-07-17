@@ -7,10 +7,14 @@ import math
 from enum import IntEnum
 
 import torch
+from loguru import logger
 from torch import Tensor
 
+# TODO: make them env vars
 DEFAULT_BOARD_RANK = 3
 DEFAULT_EMPTY_CELL_VALUE = 0
+STRIKE_THROUGH_CHAR = "\u0336"
+DEFAULT_EMPTY_CELL_CHAR = "."
 
 
 class SudokuDifficulty(IntEnum):
@@ -20,19 +24,30 @@ class SudokuDifficulty(IntEnum):
     MASTER = 17  # TODO: Refer to proof paper.
 
 
-def render(board: Tensor) -> str:
+def _fmt_cell(
+    cell: int, cell_w: int, width: int, *, is_valid: bool = True, empty_cell_char: str = DEFAULT_EMPTY_CELL_CHAR
+) -> str:
+    if 1 <= cell <= width and is_valid:
+        return str(cell).rjust(cell_w)
+    if 1 <= cell <= width and not is_valid:
+        return str(cell).rjust(cell_w) + "\u0336"
+    else:
+        return empty_cell_char.rjust(cell_w)
+
+
+def render(board: Tensor, *, mask: Tensor | None = None) -> str:
     """
     Visualization utility.
 
     Renders Sudoku board as ASCII.
     """
+    mask_ = torch.ones_like(board, dtype=torch.bool)
+    if mask is not None:
+        mask_ = mask
     board_ = board.tolist()
     width = get_board_width(board)
     rank = get_board_rank(board)
     cell_w = len(str(width))  # width per cell for alignment
-
-    def fmt(c: int) -> str:
-        return str(c).rjust(cell_w) if 1 <= c <= width else ".".rjust(cell_w)
 
     # A separator sized to the board: e.g. "+-------+-------+-------+"
     block_dashes = "-" * (rank * (cell_w + 1) + 1)
@@ -42,7 +57,7 @@ def render(board: Tensor) -> str:
     for i, row in enumerate(board_):
         if i % rank == 0:
             lines.append(sep)
-        cells = [fmt(c) for c in row]
+        cells = [_fmt_cell(c, cell_w, width, is_valid=bool(mask_[i][j].item())) for j, c in enumerate(row)]
         blocks = [" ".join(cells[j : j + rank]) for j in range(0, width, rank)]
         lines.append("| " + " | ".join(blocks) + " |")
     lines.append(sep)
@@ -55,6 +70,10 @@ def to_board_type(board: list[list[int]]) -> Tensor:
 
 def get_empty_board(board_rank: int = DEFAULT_BOARD_RANK) -> Tensor:
     return torch.zeros(size=(board_rank**2, board_rank**2), dtype=torch.long)
+
+
+def get_random_unverified_board(board_rank: int = DEFAULT_BOARD_RANK) -> Tensor:
+    return torch.randint(low=1, high=board_rank**2 + 1, size=(board_rank**2, board_rank**2), dtype=torch.long)
 
 
 def get_board_width(board: Tensor) -> int:
@@ -170,6 +189,45 @@ def is_valid_board(board: Tensor) -> bool:
     return True
 
 
+def get_is_valid_mask(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> Tensor:
+    width = get_board_width(board)
+    rank = get_board_rank(board)
+    board_: list[list[int]] = board.tolist()
+
+    mask = torch.ones_like(board, dtype=torch.bool)
+    expected = torch.arange(1, width + 1, dtype=board.dtype, device=board.device)
+
+    for i in range(width):
+        values_in_row = set()
+        values_in_col = set()
+        values_in_blk = set()
+        for j in range(width):
+            logger.debug(f"row {(i, j)}")
+            logger.debug(f"col {(j, i)}")
+            k_row = rank * (i // 3) + j // rank
+            k_col = rank * (i % 3) + j % rank
+            logger.debug(f"blk {(k_row, k_col)}")
+
+            val_row = board_[i][j]
+            val_col = board_[j][i]
+            val_blk = board_[k_row][k_col]
+
+            # 1. Check rows
+            if val_row in values_in_row and val_row != empty_value:
+                mask[i][j] = False
+            # 2. Check cols
+            if val_col in values_in_col and val_col != empty_value:
+                mask[j][i] = False
+            # 3. Check blocks
+            if val_blk in values_in_blk and val_blk != empty_value:
+                mask[k_row][k_col] = False
+            values_in_row.add(val_row)
+            values_in_col.add(val_col)
+            values_in_blk.add(val_blk)
+
+    return mask
+
+
 def solve(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> Tensor:
     """
     Solve a Sudoku board with a backtracking algorithm.
@@ -235,6 +293,71 @@ def has_unique_solution(board: Tensor) -> bool:
     return False
 
 
+def _rotate_board_clockwise_90_deg(board: Tensor) -> Tensor:
+    return board
+
+
+def _rotate_board_clockwise_180_deg(board: Tensor) -> Tensor:
+    return board
+
+
+def _rotate_board_clockwise_270_deg(board: Tensor) -> Tensor:
+    return board
+
+
+def _reflect_board_horizontally(board: Tensor) -> Tensor:
+    return board
+
+
+def _reflect_board_vertically(board: Tensor) -> Tensor:
+    return board
+
+
+def _reflect_board_diagonally(board: Tensor) -> Tensor:
+    return board
+
+
+def _reflect_board_antidiagonally(board: Tensor) -> Tensor:
+    return board
+
+
+def _relabel_digits(board: Tensor) -> Tensor:
+    return board
+
+
+def _permutate_rows(board: Tensor) -> Tensor:
+    return board
+
+
+def _permutate_cols(board: Tensor) -> Tensor:
+    return board
+
+
+def _permutate_stacks(board: Tensor) -> Tensor:
+    return board
+
+
+def _permutate_bands(board: Tensor) -> Tensor:
+    return board
+
+
+def get_random_mask(
+    difficulty: SudokuDifficulty = SudokuDifficulty.EASY, board_rank: int = DEFAULT_BOARD_RANK
+) -> Tensor:
+    mask_size = board_rank**4 - difficulty.value
+    key_mask = torch.randint(low=0, high=board_rank**4, size=(mask_size,))
+    mask = torch.zeros((board_rank**2, board_rank**2), dtype=torch.bool)
+    for k in key_mask:
+        i = k // (board_rank**2)
+        j = k % (board_rank**2)
+        mask[i][j] = True
+    return mask
+
+
+def apply_mask(board: Tensor, mask: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> Tensor:
+    return board.masked_fill(mask, empty_value)
+
+
 def suggest_board(
     difficulty: SudokuDifficulty = SudokuDifficulty.EASY, *, board_rank: int = DEFAULT_BOARD_RANK
 ) -> Tensor:
@@ -244,7 +367,7 @@ def suggest_board(
     Number of unique sudoku boards:
         N = 6670903752021072936960
         or 6.671*10^21
-        with a lot of symmetries that reduces this numbers to essentially
+        with a lot of symmetries, which reduces this numbers to essentially
         N = 5472730538 or 5.473*10^9.
         different Sudoku games.
 
@@ -254,7 +377,7 @@ def suggest_board(
         3. Permuting the three bands.
         4. Permuting the three columns within a stack.
         5. Permuting the three rows within a band.
-        6. Any reflection or rotation (from the list of symmetries of a square).
+        6. Any reflection or rotation (from the list of symmetries of a square below).
 
     Symmetries of a square:
         1. Rotation by 0 degrees (the identity transformation).

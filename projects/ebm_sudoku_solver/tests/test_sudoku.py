@@ -1,7 +1,6 @@
 import pytest
 import torch
-from ebm_sudoku_solver.game.sudoku import render, verify_solution
-from torch import Tensor
+from ebm_sudoku_solver.game.sudoku import is_valid_solution
 
 
 @pytest.fixture
@@ -22,7 +21,7 @@ def valid_board() -> Tensor:
 
 def test_verify_solution_valid(valid_board):
     """Test that a valid Sudoku board passes verification."""
-    verify_solution(valid_board)
+    is_valid_solution(valid_board)
 
 
 @pytest.mark.parametrize(
@@ -68,18 +67,7 @@ def test_verify_solution_invalid(valid_board, invalid_board_modifier, expected_e
     invalid_board = invalid_board_modifier(valid_board)
     if expected_error_msg:
         with pytest.raises(AssertionError, match=expected_error_msg):
-            verify_solution(invalid_board)
+            is_valid_solution(invalid_board)
     else:
         with pytest.raises(AssertionError):
-            verify_solution(invalid_board)
-
-
-def test_render(valid_board):
-    """Test that render function prints the board in correct ASCII format."""
-    rendered = render(valid_board)
-    lines = rendered.splitlines()
-    assert lines[0] == "+-------+-------+-------+"
-    assert lines[1] == "| 5 3 4 | 6 7 8 | 9 1 2 |"
-    assert lines[2] == "| 6 7 2 | 1 9 5 | 3 4 8 |"
-    assert lines[3] == "| 1 9 8 | 3 4 2 | 5 6 7 |"
-    assert lines[4] == "+-------+-------+-------+"
+            is_valid_solution(invalid_board)

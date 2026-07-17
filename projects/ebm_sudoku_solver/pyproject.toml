@@ -21,5 +21,5 @@ module-name = "ebm_sudoku_solver"
 module-root = "src"
 
 [build-system]
-requires = ["uv-build"]
+requires = ["uv_build>=0.11.29,<0.12"]
 build-backend = "uv_build"
