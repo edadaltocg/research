@@ -1,0 +1,7 @@
+[environment]
+python-version = "3.12"
+
+[rules]
+unresolved-import = "ignore"
+possibly-unresolved-reference = "ignore"
+missing-type-argument = "error"
