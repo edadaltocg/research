@@ -5,8 +5,8 @@ Module to define analytical utilities for the Sudoku game.
 
 import math
 from enum import IntEnum
+from functools import partial, reduce
 
-import numpy as np
 import torch
 from loguru import logger
 from torch import Generator, Tensor
@@ -283,14 +283,11 @@ def solve(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> Tens
 
         return False
 
-    _solve(0)
+    solved = _solve(0)
+    if not solved:
+        raise ValueError("Invalid board!")
 
     return to_board_type(board_)
-
-
-def has_unique_solution(board: Tensor) -> bool:
-    # TODO:
-    return False
 
 
 def _rotate_board_clockwise_90_deg(board: Tensor, *, batched: bool = False) -> Tensor:
@@ -310,30 +307,34 @@ def _rotate_board_clockwise_270_deg(board: Tensor, *, batched: bool = False) -> 
 
 def _reflect_board_horizontally(board: Tensor, *, batched: bool = False) -> Tensor:
     # torch.flip creates a copy, better is np flip
-    axis = (0, 1) if not batched else (1, 2)
+    dims = (0, 1) if not batched else (1, 2)
     # force=False is a memory view instead of copy
-    return torch.tensor(np.flip(board.detach().cpu().numpy(force=False), axis=axis), dtype=torch.long)
+    return torch.flip(board, dims=dims)
 
 
 def _reflect_board_vertically(board: Tensor, *, batched: bool = False) -> Tensor:
-    axis = (0, 1) if not batched else (1, 2)
-    return torch.tensor(np.fliplr(board.detach().cpu().numpy(force=False), axis=axis), dtype=torch.long)
+    return torch.fliplr(board)
 
 
-def _reflect_board_diagonally(board: Tensor) -> Tensor:
+def _reflect_board_diagonally(board: Tensor, *, batched: bool = False) -> Tensor:
     """Reflect across the main diagonal:  (i, j) -> (j, i)."""
     return board.T
 
 
-def _reflect_board_antidiagonally(board: Tensor) -> Tensor:
+def _reflect_board_antidiagonally(board: Tensor, *, batched: bool = False) -> Tensor:
     """Reflect across the anti-diagonal:  (i, j) -> (n-1-j, n-1-i)."""
     return board.flip((0, 1)).T
 
 
-def _relabel_digits(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> Tensor:
-    """Apply a random bijection of the digits {1, ..., width}."""
+def _relabel_digits(
+    board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE, generator: Generator | None = None
+) -> Tensor:
+    """Apply a random bijection of the digits {1, ..., width}.
+
+    Number of possible combinations: 9!
+    """
     width = get_board_width(board)
-    perm = torch.randperm(width, device=board.device) + 1
+    perm = torch.randperm(width, device=board.device, generator=generator) + 1
     lookup = torch.cat([
         torch.ones(1, dtype=board.dtype, device=board.device) * empty_value,
         perm.to(board.dtype),
@@ -342,7 +343,10 @@ def _relabel_digits(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALU
     return lookup[board]
 
 
-def _permutate_rows(board: Tensor, *, batched: bool = False, generator: Generator | None = None) -> Tensor:
+def _permutate_rows_within_blocks(
+    board: Tensor, *, batched: bool = False, generator: Generator | None = None
+) -> Tensor:
+    """Number of possible permutations: 9!"""
     width = get_board_width(board)
     perm = torch.randperm(width, generator=generator)
     if batched:
@@ -350,7 +354,10 @@ def _permutate_rows(board: Tensor, *, batched: bool = False, generator: Generato
     return board[perm]
 
 
-def _permutate_cols(board: Tensor, *, batched: bool = False, generator: Generator | None = None) -> Tensor:
+def _permutate_cols_within_blocks(
+    board: Tensor, *, batched: bool = False, generator: Generator | None = None
+) -> Tensor:
+    """Number of possible permutations: 9!"""
     width = get_board_width(board)
     perm = torch.randperm(width, generator=generator)
     if batched:
@@ -359,6 +366,14 @@ def _permutate_cols(board: Tensor, *, batched: bool = False, generator: Generato
 
 
 def _permutate_blocks_rows(board: Tensor, *, batched: bool = False, generator: Generator | None = None) -> Tensor:
+    """Number of possible permutations: 3!
+    (0,1,2)
+    (1,0,2)
+    (1,2,0)
+    (0,2,1)
+    (2,0,1)
+    (2,1,0)
+    """
     rank = get_board_rank(board)
     width = get_board_width(board)
     perm = torch.randperm(rank, generator=generator)
@@ -370,6 +385,7 @@ def _permutate_blocks_rows(board: Tensor, *, batched: bool = False, generator: G
 
 
 def _permutate_blocks_cols(board: Tensor, *, batched: bool = False, generator: Generator | None = None) -> Tensor:
+    """Number of possible permutations: 3!"""
     rank = get_board_rank(board)
     width = get_board_width(board)
     perm = torch.randperm(rank, generator=generator)
@@ -378,6 +394,44 @@ def _permutate_blocks_cols(board: Tensor, *, batched: bool = False, generator: G
     if batched:
         return board[:, :, :, perm].reshape(width, width)
     return board[:, :, perm].reshape(width, width)
+
+
+def augment(
+    board: Tensor,
+    *,
+    empty_value: int = DEFAULT_EMPTY_CELL_VALUE,
+    batched: bool = False,
+    generator: Generator | None = None,
+) -> Tensor:
+    rotations = {
+        0: _rotate_board_clockwise_90_deg,
+        1: _rotate_board_clockwise_180_deg,
+        2: _rotate_board_clockwise_270_deg,
+    }
+    _rotate = rotations[int(torch.randint(0, len(rotations), (1,), generator=generator).item())]
+
+    flips = {
+        0: _reflect_board_horizontally,
+        1: _reflect_board_vertically,
+        2: _reflect_board_diagonally,
+        3: _reflect_board_antidiagonally,
+    }
+    _flip = flips[int(torch.randint(0, len(flips), (1,), generator=generator).item())]
+
+    # 3*4*9!*3!*3!*3!*3! = 5 643 509 760 = 5.6 * 10^9
+    transforms = [
+        partial(_rotate, batched=batched),  # 3
+        partial(_flip, batched=batched),  # 4
+        partial(_relabel_digits, empty_value=empty_value),  # 9!
+        partial(_permutate_blocks_rows, batched=batched, generator=generator),  # 3!
+        partial(_permutate_blocks_cols, batched=batched, generator=generator),  # 3!
+        # TODO:
+        # partial(_permutate_rows_within_blocks, batched=batched, generator=generator),  # 3!
+        # partial(_permutate_cols_within_blocks, batched=batched, generator=generator),  # 3!
+    ]
+
+    board = reduce(lambda b, func: func(b), transforms, board)
+    return board
 
 
 def get_random_mask(
@@ -407,8 +461,23 @@ def apply_mask(board: Tensor, mask: Tensor, *, empty_value: int = DEFAULT_EMPTY_
     return board.masked_fill(mask, empty_value)
 
 
+def has_unique_solution(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> bool:
+    # TODO: improve this! Do I need to fully solve to find unique solution?
+    try:
+        board = solve(board, empty_value=empty_value)
+    except ValueError as e:
+        logger.error(e)
+        return False
+
+    return True
+
+
 def suggest_board(
-    difficulty: SudokuDifficulty = SudokuDifficulty.EASY, *, board_rank: int = DEFAULT_BOARD_RANK
+    difficulty: SudokuDifficulty = SudokuDifficulty.EASY,
+    *,
+    board_rank: int = DEFAULT_BOARD_RANK,
+    empty_value: int = DEFAULT_EMPTY_CELL_VALUE,
+    generator: Generator | None = None,
 ) -> Tensor:
     """
     Generation is much harder than verification.
@@ -439,7 +508,8 @@ def suggest_board(
         8. Reflection in the diagonal from the upper left to the bottom right corner.
 
     Constraints:
-        1. You cannot build a Sudoku with more than nine empty 9-number groups (rows, 3x3 blocks or columns)
+        1. You cannot build a Sudoku with more than nine empty 9-number groups (rows, columns, or 3x3 blocks)
+        TODO: Is this to have unique solution?
 
     Algorithm:
         1. Seed a complete board.
@@ -452,21 +522,20 @@ def suggest_board(
     PS.:
         Time sensitive, might benefit from a Rust implementation.
     """
-    # TODO:
-    key_mask = torch.randint(low=0, high=board_rank**4, size=(difficulty,))
-    value_mask = torch.randint(low=1, high=10, size=(difficulty,))
+    board = get_trivial_completed_board(board_rank=board_rank)
+    board = augment(board, empty_value=empty_value, generator=generator)
+    mask = get_random_mask(difficulty=difficulty, board_rank=board_rank)
+    masked_board = apply_mask(board, mask, empty_value=empty_value)
 
-    board = get_empty_board(board_rank=board_rank)
-    board[key_mask] = value_mask
-    return board.reshape(board_rank**2, board_rank**2)
+    _counter = 1
+    while not has_unique_solution(masked_board):
+        board = get_trivial_completed_board(board_rank=board_rank)
+        mask = get_random_mask(difficulty=difficulty, board_rank=board_rank)
+        masked_board = apply_mask(board, mask, empty_value=empty_value)
+        _counter += 1
 
-
-def generate_valid_board(difficulty: SudokuDifficulty = SudokuDifficulty.EASY, *, board_rank: int = DEFAULT_BOARD_RANK):
-    """Generates a complete or imcomplete board that has one unique solution."""
-
-    # Unless P = NP, there is no polynomial-time algorithm for generating general Sudoku problems with exactly one solution.
-    # TODO:
-    return
+    logger.debug(f"Tried {_counter} board(s) before finding a valid one.")
+    return masked_board
 
 
 def information_content():

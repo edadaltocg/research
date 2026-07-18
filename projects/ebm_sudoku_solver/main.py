@@ -7,6 +7,7 @@
 # ebm-sudoku-solver = { path = "." }
 # ///
 
+import torch
 from ebm_sudoku_solver.game.sudoku import (
     SudokuDifficulty,
     _rotate_board_clockwise_90_deg,
@@ -20,16 +21,20 @@ from ebm_sudoku_solver.game.sudoku import (
     is_valid_board,
     is_valid_solution,
     render,
+    suggest_board,
 )
 
 from research.utils import seed_all
 
 
 def main():
+    board_rank = 3
+    difficulty = SudokuDifficulty.EASY
+
     print("EBM Sudoku Solver application script running!")
+    generator = torch.Generator()
     seed_all()
 
-    board_rank = 3
     empty_board = get_empty_board(board_rank=board_rank)
     is_valid_board(empty_board)
     print("Empty board:")
@@ -49,7 +54,7 @@ def main():
 
     print("Easy trivial board to complete:")
     trivial_board = get_trivial_completed_board(board_rank=board_rank)
-    mask = get_random_mask(difficulty=SudokuDifficulty.EASY, board_rank=board_rank)
+    mask = get_random_mask(difficulty=difficulty, board_rank=board_rank)
     masked_board = apply_mask(trivial_board, mask)
     is_valid_mask = get_is_valid_mask(masked_board)
     print(render(masked_board, mask=is_valid_mask))
@@ -63,10 +68,11 @@ def main():
     print("Blocks symmetry")
     blocks_tensor = trivial_board.reshape(board_rank, board_rank, board_rank, board_rank)
     print(render(trivial_board))
-    print(blocks_tensor)
-    print(blocks_tensor[0])
-    print(blocks_tensor[1])
-    print(blocks_tensor[2])
+
+    print("Get incomplete (valid) board")
+    imcomplete_board = suggest_board(difficulty=difficulty, board_rank=board_rank, generator=generator)
+    is_valid_mask = get_is_valid_mask(imcomplete_board)
+    print(render(imcomplete_board, mask=is_valid_mask))
 
 
 if __name__ == "__main__":
