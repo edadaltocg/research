@@ -238,9 +238,10 @@ def solve(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> Tens
     PS.:
         Time sensitive, might benefit from a Rust implementation.
     """
+    width = get_board_width(board)
+    rank = get_board_rank(board)
+
     board_: list[list[int]] = board.tolist()
-    width = len(board_)
-    rank = int(math.sqrt(width))
 
     # constraints
     rows_c = [set() for _ in range(width)]
@@ -260,7 +261,7 @@ def solve(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> Tens
                 cols_c[j].add(v)
                 blks_c[k].add(v)
 
-    digits = set(range(width))
+    digits = set(range(1, width + 1))
 
     def _solve(idx: int) -> bool:
         if idx == len(empty_indices):
@@ -276,6 +277,7 @@ def solve(board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> Tens
             if _solve(idx + 1):
                 return True
 
+            # backtracking cleanup
             board_[i][j] = empty_value
             rows_c[i].discard(v)
             cols_c[j].discard(v)
@@ -536,6 +538,18 @@ def suggest_board(
 
     logger.debug(f"Tried {_counter} board(s) before finding a valid one.")
     return masked_board
+
+
+def verify_solution(board: Tensor, solved_board: Tensor) -> bool:
+    """
+    Verify if solved board is the solution of board.
+
+    To be a solution:
+        1. every filed in cell in board should be a match in solved board;
+        2. Solved board should be a valid solution;
+    """
+    # TODO
+    return False
 
 
 def information_content():

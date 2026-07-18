@@ -21,6 +21,7 @@ from ebm_sudoku_solver.game.sudoku import (
     is_valid_board,
     is_valid_solution,
     render,
+    solve,
     suggest_board,
 )
 
@@ -52,7 +53,7 @@ def main():
     is_valid_mask = get_is_valid_mask(random_board)
     print(render(random_board, mask=is_valid_mask))
 
-    print("Easy trivial board to complete:")
+    print("Trivial board to complete:")
     trivial_board = get_trivial_completed_board(board_rank=board_rank)
     mask = get_random_mask(difficulty=difficulty, board_rank=board_rank)
     masked_board = apply_mask(trivial_board, mask)
@@ -70,9 +71,18 @@ def main():
     print(render(trivial_board))
 
     print("Get incomplete (valid) board")
-    imcomplete_board = suggest_board(difficulty=difficulty, board_rank=board_rank, generator=generator)
-    is_valid_mask = get_is_valid_mask(imcomplete_board)
-    print(render(imcomplete_board, mask=is_valid_mask))
+    incomplete_board = suggest_board(difficulty=difficulty, board_rank=board_rank, generator=generator)
+    is_valid_mask = get_is_valid_mask(incomplete_board)
+    print(render(incomplete_board, mask=is_valid_mask))
+
+    print("Solve board")
+    print("\tStarting board")
+    print(render(incomplete_board, mask=is_valid_mask))
+    print("\tSolved board")
+    solved_board = solve(incomplete_board)
+    is_valid_mask = get_is_valid_mask(solved_board)
+    is_valid_solution(solved_board)
+    print(render(solved_board, mask=is_valid_mask))
 
 
 if __name__ == "__main__":
