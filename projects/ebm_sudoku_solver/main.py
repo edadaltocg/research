@@ -23,6 +23,9 @@ from ebm_sudoku_solver.game.sudoku import (
     render,
     solve,
     suggest_board,
+    verify_solution,
+    _permutate_rows_within_blocks,
+    _permutate_cols_within_blocks,
 )
 
 from research.utils import seed_all
@@ -83,6 +86,20 @@ def main():
     is_valid_mask = get_is_valid_mask(solved_board)
     is_valid_solution(solved_board)
     print(render(solved_board, mask=is_valid_mask))
+    assert verify_solution(incomplete_board, solved_board)
+
+    print("Permutation tests")
+    new_board = _permutate_rows_within_blocks(trivial_board)
+    is_valid_mask = get_is_valid_mask(trivial_board)
+    print(render(trivial_board, mask=is_valid_mask))
+    is_valid_mask = get_is_valid_mask(new_board)
+    print(render(new_board, mask=is_valid_mask))
+
+    new_board = _permutate_cols_within_blocks(trivial_board)
+    is_valid_mask = get_is_valid_mask(trivial_board)
+    print(render(trivial_board, mask=is_valid_mask))
+    is_valid_mask = get_is_valid_mask(new_board)
+    print(render(new_board, mask=is_valid_mask))
 
 
 if __name__ == "__main__":
