@@ -29,7 +29,16 @@ def seed_all(seed: int = 42):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+    torch.mps.manual_seed(seed)
     random.seed(seed)
+
+
+def get_default_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 
 def num_trainable_parameters(model):
