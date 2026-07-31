@@ -74,7 +74,7 @@ def main():
     print(render(trivial_board))
 
     print("Get incomplete (valid) board")
-    incomplete_board = suggest_board(difficulty=difficulty, board_rank=board_rank, generator=generator)
+    incomplete_board, _ = suggest_board(difficulty=difficulty, board_rank=board_rank, generator=generator)
     is_valid_mask = get_is_valid_mask(incomplete_board)
     print(render(incomplete_board, mask=is_valid_mask))
 

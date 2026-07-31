@@ -8,6 +8,7 @@ import torch
 from loguru import logger
 from torch import Generator, Tensor
 
+# TODO: remove the concept of batched here.
 # TODO: make them env vars
 DEFAULT_BOARD_RANK = 3
 DEFAULT_EMPTY_CELL_VALUE = 0
@@ -494,7 +495,7 @@ def suggest_board(
     board_rank: int = DEFAULT_BOARD_RANK,
     empty_value: int = DEFAULT_EMPTY_CELL_VALUE,
     generator: Generator | None = None,
-) -> Tensor:
+) -> tuple[Tensor, Tensor]:
     """
     Generation is much harder than verification.
 
@@ -537,6 +538,9 @@ def suggest_board(
 
     PS.:
         Time sensitive, might benefit from a Rust implementation.
+
+    Returns:
+        (X,y)
     """
     board = get_trivial_completed_board(board_rank=board_rank)
     board = augment(board, empty_value=empty_value, generator=generator)
@@ -551,7 +555,7 @@ def suggest_board(
         _counter += 1
 
     logger.debug(f"Tried {_counter} board(s) before finding a valid one.")
-    return masked_board
+    return masked_board, board
 
 
 def verify_solution(board: Tensor, solved_board: Tensor, *, empty_value: int = DEFAULT_EMPTY_CELL_VALUE) -> bool:

@@ -91,6 +91,10 @@ An NP-complete problem satisfies the following two properties:
 
 Even though checking a solution of an NP-complete problem can be done relatively quickly and easily, there is no known algorithm for finding a solution to begin with, because the time needed for computation increases so fast compared to the size of the problem.
 
+## Dimensionality of the problem
+
+Complete valid Sudoku grids: ~6.67x10^21 (Felgenhauer & Jarvis, 2005)
+
 ## EBM
 
 EBM stands for energy-based-model.
