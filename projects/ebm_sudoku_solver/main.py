@@ -10,6 +10,8 @@
 import torch
 from ebm_sudoku_solver.game.sudoku import (
     SudokuDifficulty,
+    _permutate_cols_within_blocks,
+    _permutate_rows_within_blocks,
     _rotate_board_clockwise_90_deg,
     apply_mask,
     count_empty_cells,
@@ -24,8 +26,6 @@ from ebm_sudoku_solver.game.sudoku import (
     solve,
     suggest_board,
     verify_solution,
-    _permutate_rows_within_blocks,
-    _permutate_cols_within_blocks,
 )
 
 from research.utils import seed_all
