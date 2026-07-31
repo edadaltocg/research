@@ -17,9 +17,9 @@ Models to learn how to play sudoku.
     Difficulty: adjacency matrix do not scale
 """
 
-from dataclasses import dataclass
 import math
 from collections import OrderedDict
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 

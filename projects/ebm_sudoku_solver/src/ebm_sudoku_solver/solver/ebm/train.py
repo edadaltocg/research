@@ -5,15 +5,14 @@ from dataclasses import dataclass
 
 import torch
 from torch import nn, optim
-from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts, LinearLR, SequentialLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from ebm_sudoku_solver.solver.ebm.dataset import SudokuDataset
 from ebm_sudoku_solver.solver.ebm.model import EBMSudokuVerifierModel
-from research.utils import seed_all
-
 from ebm_sudoku_solver.solver.ebm.utils import get_logger
+from research.utils import seed_all
 
 
 def _replay_buffer():
